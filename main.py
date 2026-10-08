@@ -1,4 +1,14 @@
+import win32com.client
 from datetime import datetime
+
+# Initialize Windows SAPI voice engine
+speaker = win32com.client.Dispatch("SAPI.SpVoice")
+
+
+def respond(message: str) -> None:
+    """Prints the assistant response and speaks it."""
+    print(f"Assistant: {message}")
+    speaker.Speak(message)
 
 
 def handle_command(command: str) -> bool:
@@ -10,15 +20,15 @@ def handle_command(command: str) -> bool:
     cleaned_command = command.strip().lower()
 
     if cleaned_command == "hello":
-        print("Assistant: Hello! How can I help you today?")
+        respond("Hello! How can I help you today?")
     elif cleaned_command == "time":
         current_time = datetime.now().strftime("%I:%M %p")
-        print(f"Assistant: The current time is {current_time}.")
+        respond(f"The current time is {current_time}.")
     elif cleaned_command == "exit":
-        print("Assistant: Goodbye!")
+        respond("Goodbye!")
         return False
     else:
-        print("Assistant: I don't understand that command yet.")
+        respond("I don't understand that command yet.")
 
     return True
 
@@ -39,7 +49,7 @@ def main() -> None:
             if not should_continue:
                 break
         except (KeyboardInterrupt, EOFError):
-            print("\nAssistant: Goodbye!")
+            respond("Goodbye!")
             break
 
 
