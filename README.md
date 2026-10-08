@@ -8,8 +8,8 @@ A modular Python-based voice and text virtual assistant project built step-by-st
 
 ```text
 voice-virtual-assistant/
-|-- app.py                  # Interactive Streamlit Web UI (voice recording, chat, and audio playback)
-|-- main.py                 # Terminal voice assistant with noise reduction, STT, Ollama LLM, and TTS
+|-- app.py                  # Interactive Streamlit Web UI (voice recording, multi-turn chat, audio playback)
+|-- main.py                 # Terminal voice assistant with noise reduction, STT, multi-turn Ollama LLM, and TTS
 |-- llm_test.py             # Standalone local LLM response generation test (Ollama)
 |-- speech_to_text_test.py  # Standalone STT transcription test with noise reduction
 |-- microphone_test.py      # Microphone recording and playback hardware test
@@ -27,18 +27,20 @@ The voice assistant executes the following pipeline:
 1. **Audio Capture**: Captures voice through microphone hardware (`sounddevice` in terminal or `st.audio_input` in browser).
 2. **Noise Reduction & Audio Preprocessing**: Cleans the input signal using `noisereduce` against an ambient baseline.
 3. **Speech-to-Text (STT)**: Converts audio into text with the Google Speech Recognition API (`speech_recognition`).
-4. **Command & LLM Routing**:
-   - Matches built-in commands (`hello`, `time`, `exit`).
-   - Routes open-ended questions to a local **Ollama** model (`qwen3:1.7b`) for concise, intelligent answers.
+4. **Contextual Memory & Routing**:
+   - Matches built-in commands (`hello`, `time`, `clear memory`, `exit`).
+   - Appends user and assistant dialogue turns to a sliding-window memory buffer (retaining the last 8 messages).
+   - Routes open-ended questions and follow-ups to a local **Ollama** model (`qwen3:1.7b`) for contextual answers.
 5. **Text-to-Speech Output**: Speaks the response aloud using the Windows SAPI voice engine (`win32com.client`) or browser audio streaming (`gTTS`).
 
 ---
 
 ## Features Implemented
 
-- **Streamlit Web Interface (`app.py`)**: Full visual dashboard with browser microphone input, chat history, Ollama status/model selector, and in-browser audio playback.
-- **Terminal Voice-Driven Loop (`main.py`)**: Hands-free command loop with noise reduction and real-time TTS.
-- **Ambient Noise Calibration & Reduction**: Background noise subtraction ensures higher transcription accuracy in everyday environments.
+- **Multi-Turn Conversation Memory**: Retains conversation history so users can ask contextual follow-up questions (e.g., "Who was Alexander Fleming?" followed by "When did he receive the Nobel Prize?").
+- **Streamlit Web Interface (`app.py`)**: Full visual dashboard with browser microphone input, chat history, live response latency tracking, Ollama status/model selector, and in-browser audio playback.
+- **Terminal Voice-Driven Loop (`main.py`)**: Hands-free command loop with background noise calibration and real-time TTS.
+- **Ambient Noise Calibration & Reduction**: Background noise subtraction ensures high transcription accuracy in everyday environments.
 - **Speech Recognition (STT)**: Robust transcription with automatic error handling for speech timeouts or background noise.
 - **Local AI Intelligence (LLM)**: Offline, private conversational AI powered by Ollama (`qwen3:1.7b`).
 - **Hardware Diagnostics**: Standalone scripts to test microphone capture, audio playback, TTS synthesis, STT transcription, and LLM latency individually.
@@ -80,6 +82,7 @@ Launch the interactive web interface in your browser:
 ```powershell
 streamlit run app.py
 ```
+*(Access the app at `http://localhost:8501`)*
 
 ### 2. Terminal Voice Assistant
 Run the voice-driven terminal assistant:
@@ -109,11 +112,23 @@ python main.py
 
 ---
 
+## Commands Supported
+
+- `hello` / `hi` / `hey` - Greet the assistant.
+- `time` / `what time is it` - Report the current local time.
+- `clear memory` / `forget conversation` / `reset` - Wipe conversation history context.
+- `exit` / `quit` / `stop` / `bye` - Terminate the assistant loop.
+- *Any other query* - Handled by the local Ollama LLM with multi-turn memory.
+
+---
+
 ## Roadmap
 
 - [x] Integrate local LLM intelligence directly into the main voice loop.
 - [x] Build an interactive Streamlit web interface with microphone recording and audio playback.
+- [x] Implement multi-turn conversation memory and contextual follow-up understanding.
 - [ ] Implement continuous listening / wake word activation (e.g., "Hey Assistant").
 - [ ] Add system automation skills (opening applications, browser searches, volume control).
 - [ ] Add live weather and news API integrations.
+
 

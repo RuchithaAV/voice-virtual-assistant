@@ -109,22 +109,31 @@ def generate_speech(text: str) -> bytes | None:
         return None
 
 
-# Helper: Query Local Ollama LLM
-def query_ollama(prompt: str, model_name: str) -> str:
+# Helper: Query Local Ollama LLM with multi-turn history
+def query_ollama(prompt: str, model_name: str, history: list[dict] | None = None) -> str:
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "You are a helpful voice assistant. "
+                "Answer briefly in plain language, using at most three sentences."
+            ),
+        }
+    ]
+
+    # Include the last 8 conversation turns from history
+    if history:
+        for msg in history[-8:]:
+            if msg.get("role") in ("user", "assistant") and msg.get("content"):
+                messages.append({"role": msg["role"], "content": msg["content"]})
+
+    messages.append({"role": "user", "content": prompt})
+
     try:
         client = ollama.Client(host="http://localhost:11434", timeout=60)
         response = client.chat(
             model=model_name,
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "You are a helpful voice assistant. "
-                        "Answer briefly in plain language, using at most three sentences."
-                    ),
-                },
-                {"role": "user", "content": prompt},
-            ],
+            messages=messages,
             think=False,
             options={"num_ctx": 2048, "num_predict": 150},
         )
@@ -134,7 +143,7 @@ def query_ollama(prompt: str, model_name: str) -> str:
 
 
 # Helper: Route command or send to LLM
-def process_command(user_query: str, model_name: str) -> str:
+def process_command(user_query: str, model_name: str, history: list[dict] | None = None) -> str:
     cleaned = user_query.strip().lower()
 
     if cleaned in ("exit", "quit", "bye", "stop"):
@@ -145,7 +154,8 @@ def process_command(user_query: str, model_name: str) -> str:
         current_time = datetime.now().strftime("%I:%M %p")
         return f"The current time is {current_time}."
     else:
-        return query_ollama(user_query, model_name)
+        return query_ollama(user_query, model_name, history=history)
+
 
 
 # --- Sidebar ---
@@ -245,7 +255,9 @@ with col_chat:
                 with st.chat_message("assistant"):
                     start_time = perf_counter()
                     with st.spinner("Thinking..."):
-                        assistant_response = process_command(transcribed_text, selected_model)
+                        assistant_response = process_command(
+                            transcribed_text, selected_model, history=st.session_state.messages[:-1]
+                        )
 
                     audio_response_bytes = None
                     if enable_voice_reply:
@@ -279,7 +291,9 @@ with col_chat:
         with st.chat_message("assistant"):
             start_time = perf_counter()
             with st.spinner("Thinking..."):
-                assistant_response = process_command(user_text_input, selected_model)
+                assistant_response = process_command(
+                    user_text_input, selected_model, history=st.session_state.messages[:-1]
+                )
 
             audio_response_bytes = None
             if enable_voice_reply:
@@ -300,3 +314,4 @@ with col_chat:
                 "latency": elapsed,
             }
         )
+

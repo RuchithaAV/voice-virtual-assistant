@@ -20,6 +20,19 @@ recognizer.operation_timeout = 15
 ollama_client = Client(host="http://localhost:11434", timeout=60)
 MODEL_NAME = "qwen3:1.7b"
 
+# System prompt for concise voice responses
+SYSTEM_PROMPT = {
+    "role": "system",
+    "content": (
+        "You are a helpful voice assistant. "
+        "Answer briefly in plain language, using at most three sentences."
+    ),
+}
+
+# Persistent multi-turn conversation memory
+conversation_history: list[dict] = []
+MAX_HISTORY_MESSAGES = 8  # Keeps last 4 user-assistant exchanges
+
 
 def respond(message: str) -> None:
     """Prints the assistant response and speaks it."""
@@ -28,40 +41,47 @@ def respond(message: str) -> None:
 
 
 def ask_llm(prompt: str) -> str:
-    """Queries the local Ollama LLM for a concise answer."""
+    """Queries Ollama with full multi-turn conversation history."""
+    global conversation_history
+
+    # Append current user question to history
+    conversation_history.append({"role": "user", "content": prompt})
+
+    # Keep only the most recent N messages to avoid context overflow
+    trimmed_history = conversation_history[-MAX_HISTORY_MESSAGES:]
+
     try:
         response = ollama_client.chat(
             model=MODEL_NAME,
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "You are a helpful voice assistant. "
-                        "Answer briefly in plain language, using at most three sentences."
-                    ),
-                },
-                {"role": "user", "content": prompt},
-            ],
+            messages=[SYSTEM_PROMPT] + trimmed_history,
             think=False,
             options={"num_ctx": 2048, "num_predict": 150},
         )
-        return response.message.content.strip()
+        answer = response.message.content.strip()
+
+        # Append assistant response to history
+        conversation_history.append({"role": "assistant", "content": answer})
+        return answer
     except Exception as error:
         print(f"LLM generation failed: {error}")
         return "Sorry, I had trouble generating a response."
 
 
 def handle_command(command: str) -> bool:
-    """Processes a user command or routes to local LLM.
+    """Processes a user command or routes to local LLM with memory.
     
     Returns:
         bool: False if the loop should terminate ('exit'), True otherwise.
     """
+    global conversation_history
     cleaned_command = command.strip().lower()
 
     if cleaned_command in ("exit", "quit", "bye", "stop"):
         respond("Goodbye!")
         return False
+    elif cleaned_command in ("clear memory", "forget conversation", "reset memory", "reset"):
+        conversation_history.clear()
+        respond("I have cleared my memory of our previous conversation.")
     elif cleaned_command in ("hello", "hey", "hi"):
         respond("Hello! How can I help you today?")
     elif cleaned_command in ("time", "what is the time", "what time is it"):
@@ -123,7 +143,7 @@ def listen(noise: np.ndarray) -> str | None:
 
 def main() -> None:
     print("=== Voice Virtual Assistant ===")
-    print("Commands: hello, time, ask any question, or say exit")
+    print("Commands: hello, time, clear memory, ask any question, or exit")
     print("Press Ctrl+C to quit at any time.\n")
 
     try:
