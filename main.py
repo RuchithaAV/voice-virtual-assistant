@@ -3,6 +3,7 @@ from datetime import datetime
 import numpy as np
 import noisereduce as nr
 from ollama import Client
+from skills import execute_skill
 import sounddevice as sd
 import speech_recognition as sr
 
@@ -68,7 +69,7 @@ def ask_llm(prompt: str) -> str:
 
 
 def handle_command(command: str) -> bool:
-    """Processes a user command or routes to local LLM with memory.
+    """Processes a user command, executes system skills, or routes to local LLM with memory.
     
     Returns:
         bool: False if the loop should terminate ('exit'), True otherwise.
@@ -82,17 +83,28 @@ def handle_command(command: str) -> bool:
     elif cleaned_command in ("clear memory", "forget conversation", "reset memory", "reset"):
         conversation_history.clear()
         respond("I have cleared my memory of our previous conversation.")
+        return True
     elif cleaned_command in ("hello", "hey", "hi"):
         respond("Hello! How can I help you today?")
+        return True
     elif cleaned_command in ("time", "what is the time", "what time is it"):
         current_time = datetime.now().strftime("%I:%M %p")
         respond(f"The current time is {current_time}.")
-    else:
-        print("Thinking...")
-        answer = ask_llm(command)
-        respond(answer)
+        return True
 
+    # 1. Check for system automation skills (opening apps, searches, volume control)
+    skill_handled, skill_response, _ = execute_skill(command)
+    if skill_handled and skill_response:
+        respond(skill_response)
+        return True
+
+
+    # 2. Fallback to local Ollama LLM with memory
+    print("Thinking...")
+    answer = ask_llm(command)
+    respond(answer)
     return True
+
 
 
 def record_audio(duration: int) -> np.ndarray:

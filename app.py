@@ -3,6 +3,7 @@ from time import perf_counter
 from datetime import datetime
 from gtts import gTTS
 import ollama
+from skills import execute_skill
 import speech_recognition as sr
 import streamlit as st
 
@@ -142,20 +143,25 @@ def query_ollama(prompt: str, model_name: str, history: list[dict] | None = None
         return f"Sorry, I had trouble generating a response from the local AI model ({error})."
 
 
-# Helper: Route command or send to LLM
-def process_command(user_query: str, model_name: str, history: list[dict] | None = None) -> str:
+# Helper: Route command, execute system skills, or send to LLM
+def process_command(user_query: str, model_name: str, history: list[dict] | None = None) -> tuple[str, str | None]:
     cleaned = user_query.strip().lower()
 
     if cleaned in ("exit", "quit", "bye", "stop"):
-        return "Goodbye! Have a great day!"
+        return "Goodbye! Have a great day!", None
     elif cleaned in ("hello", "hey", "hi"):
-        return "Hello! How can I assist you today?"
+        return "Hello! How can I assist you today?", None
     elif cleaned in ("time", "what is the time", "what time is it", "current time"):
         current_time = datetime.now().strftime("%I:%M %p")
-        return f"The current time is {current_time}."
-    else:
-        return query_ollama(user_query, model_name, history=history)
+        return f"The current time is {current_time}.", None
 
+    # Check for system automation skills (opening apps, searches, volume control)
+    skill_handled, skill_response, target_url = execute_skill(user_query)
+    if skill_handled and skill_response:
+        return skill_response, target_url
+
+    # Fallback to local Ollama LLM with multi-turn memory
+    return query_ollama(user_query, model_name, history=history), None
 
 
 # --- Sidebar ---
@@ -200,6 +206,7 @@ with st.sidebar:
                 "content": "Conversation cleared. How can I help you?",
                 "audio": None,
                 "latency": None,
+                "url": None,
             }
         ]
         st.session_state.last_processed_audio = None
@@ -233,6 +240,8 @@ with col_chat:
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]):
             st.write(msg["content"])
+            if msg.get("url"):
+                st.link_button("Open Link in Browser", msg["url"])
             if msg.get("audio"):
                 st.audio(msg["audio"], format="audio/mp3")
             if msg.get("latency"):
@@ -248,14 +257,14 @@ with col_chat:
                 transcribed_text = transcribe_audio(audio_bytes)
 
             if transcribed_text:
-                st.session_state.messages.append({"role": "user", "content": transcribed_text, "audio": None, "latency": None})
+                st.session_state.messages.append({"role": "user", "content": transcribed_text, "audio": None, "latency": None, "url": None})
                 with st.chat_message("user"):
                     st.write(transcribed_text)
 
                 with st.chat_message("assistant"):
                     start_time = perf_counter()
                     with st.spinner("Thinking..."):
-                        assistant_response = process_command(
+                        assistant_response, target_url = process_command(
                             transcribed_text, selected_model, history=st.session_state.messages[:-1]
                         )
 
@@ -266,6 +275,8 @@ with col_chat:
 
                     elapsed = perf_counter() - start_time
                     st.write(assistant_response)
+                    if target_url:
+                        st.link_button("Open Link in Browser", target_url)
                     if audio_response_bytes:
                         st.audio(audio_response_bytes, format="audio/mp3", autoplay=True)
                     st.markdown(f'<div class="metric-caption">Response time: {elapsed:.2f}s</div>', unsafe_allow_html=True)
@@ -276,6 +287,7 @@ with col_chat:
                         "content": assistant_response,
                         "audio": audio_response_bytes,
                         "latency": elapsed,
+                        "url": target_url,
                     }
                 )
             else:
@@ -284,14 +296,14 @@ with col_chat:
     # Handle Text Input
     user_text_input = st.chat_input("Or type your question here...")
     if user_text_input:
-        st.session_state.messages.append({"role": "user", "content": user_text_input, "audio": None, "latency": None})
+        st.session_state.messages.append({"role": "user", "content": user_text_input, "audio": None, "latency": None, "url": None})
         with st.chat_message("user"):
             st.write(user_text_input)
 
         with st.chat_message("assistant"):
             start_time = perf_counter()
             with st.spinner("Thinking..."):
-                assistant_response = process_command(
+                assistant_response, target_url = process_command(
                     user_text_input, selected_model, history=st.session_state.messages[:-1]
                 )
 
@@ -302,6 +314,8 @@ with col_chat:
 
             elapsed = perf_counter() - start_time
             st.write(assistant_response)
+            if target_url:
+                st.link_button("Open Link in Browser", target_url)
             if audio_response_bytes:
                 st.audio(audio_response_bytes, format="audio/mp3", autoplay=True)
             st.markdown(f'<div class="metric-caption">Response time: {elapsed:.2f}s</div>', unsafe_allow_html=True)
@@ -312,6 +326,8 @@ with col_chat:
                 "content": assistant_response,
                 "audio": audio_response_bytes,
                 "latency": elapsed,
+                "url": target_url,
             }
         )
+
 
