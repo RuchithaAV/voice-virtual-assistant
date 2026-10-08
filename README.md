@@ -1,6 +1,6 @@
 # Voice Virtual Assistant
 
-A modular Python-based voice and text virtual assistant project built step-by-step for learning, experimentation, and local AI integration.
+A modular Python-based voice and text virtual assistant project built step-by-step for learning, experimentation, local AI integration, and interactive web visualization.
 
 ---
 
@@ -8,7 +8,8 @@ A modular Python-based voice and text virtual assistant project built step-by-st
 
 ```text
 voice-virtual-assistant/
-|-- main.py                 # Full voice assistant with noise reduction, STT, Ollama LLM, and TTS
+|-- app.py                  # Interactive Streamlit Web UI (voice recording, chat, and audio playback)
+|-- main.py                 # Terminal voice assistant with noise reduction, STT, Ollama LLM, and TTS
 |-- llm_test.py             # Standalone local LLM response generation test (Ollama)
 |-- speech_to_text_test.py  # Standalone STT transcription test with noise reduction
 |-- microphone_test.py      # Microphone recording and playback hardware test
@@ -21,27 +22,26 @@ voice-virtual-assistant/
 
 ## Architecture and Workflow
 
-The core assistant in `main.py` executes the following sequential pipeline:
+The voice assistant executes the following pipeline:
 
-1. **Noise Profiling**: Measures a 2-second ambient noise profile on startup.
-2. **Audio Capture**: Records 5 seconds of 16 kHz mono microphone audio via `sounddevice`.
-3. **Noise Reduction**: Cleans the input signal using `noisereduce` against the initial noise baseline.
-4. **Speech-to-Text**: Converts processed audio to text using the Google Speech Recognition API (`speech_recognition`).
-5. **Command & LLM Routing**:
+1. **Audio Capture**: Captures voice through microphone hardware (`sounddevice` in terminal or `st.audio_input` in browser).
+2. **Noise Reduction & Audio Preprocessing**: Cleans the input signal using `noisereduce` against an ambient baseline.
+3. **Speech-to-Text (STT)**: Converts audio into text with the Google Speech Recognition API (`speech_recognition`).
+4. **Command & LLM Routing**:
    - Matches built-in commands (`hello`, `time`, `exit`).
    - Routes open-ended questions to a local **Ollama** model (`qwen3:1.7b`) for concise, intelligent answers.
-6. **Text-to-Speech Output**: Speaks the response aloud using the native Windows SAPI voice engine (`win32com.client`).
+5. **Text-to-Speech Output**: Speaks the response aloud using the Windows SAPI voice engine (`win32com.client`) or browser audio streaming (`gTTS`).
 
 ---
 
 ## Features Implemented
 
-- **Voice-Driven Assistant Loop**: Fully hands-free voice interaction loop with real-time feedback and clean `Ctrl+C` interrupt handling.
-- **Ambient Noise Calibration & Reduction**: Dynamic background noise subtraction ensures higher transcription accuracy in everyday environments.
-- **Speech Recognition (STT)**: High-accuracy speech transcription with automatic fallbacks for unrecognized speech or network timeouts.
-- **Local AI Intelligence (LLM)**: Offline, private conversational AI powered by Ollama (`qwen3:1.7b`), constrained to short voice-friendly responses.
-- **Text-to-Speech (TTS)**: Fast, natural speech synthesis via Windows SAPI.
-- **Hardware & Component Tests**: Dedicated standalone diagnostic scripts to test microphone capture, audio playback, TTS synthesis, STT transcription, and LLM latency individually.
+- **Streamlit Web Interface (`app.py`)**: Full visual dashboard with browser microphone input, chat history, Ollama status/model selector, and in-browser audio playback.
+- **Terminal Voice-Driven Loop (`main.py`)**: Hands-free command loop with noise reduction and real-time TTS.
+- **Ambient Noise Calibration & Reduction**: Background noise subtraction ensures higher transcription accuracy in everyday environments.
+- **Speech Recognition (STT)**: Robust transcription with automatic error handling for speech timeouts or background noise.
+- **Local AI Intelligence (LLM)**: Offline, private conversational AI powered by Ollama (`qwen3:1.7b`).
+- **Hardware Diagnostics**: Standalone scripts to test microphone capture, audio playback, TTS synthesis, STT transcription, and LLM latency individually.
 
 ---
 
@@ -68,21 +68,27 @@ python -m venv .venv
 Install required dependencies:
 
 ```powershell
-pip install sounddevice SpeechRecognition pywin32 pyttsx3 numpy noisereduce ollama
+pip install sounddevice SpeechRecognition pywin32 pyttsx3 numpy noisereduce ollama streamlit gTTS
 ```
 
 ---
 
-## Running the Modules
+## Running the Applications
 
-### 1. Main Voice Assistant
-Runs the full end-to-end voice assistant:
+### 1. Streamlit Web Dashboard (Recommended)
+Launch the interactive web interface in your browser:
+```powershell
+streamlit run app.py
+```
+
+### 2. Terminal Voice Assistant
+Run the voice-driven terminal assistant:
 ```powershell
 python main.py
 ```
 *(Or run directly with the virtual environment executable: `.\.venv\Scripts\python.exe main.py`)*
 
-### 2. Standalone Diagnostic Tests
+### 3. Standalone Diagnostic Tests
 
 - **Local LLM Test**:
   ```powershell
@@ -106,6 +112,7 @@ python main.py
 ## Roadmap
 
 - [x] Integrate local LLM intelligence directly into the main voice loop.
+- [x] Build an interactive Streamlit web interface with microphone recording and audio playback.
 - [ ] Implement continuous listening / wake word activation (e.g., "Hey Assistant").
 - [ ] Add system automation skills (opening applications, browser searches, volume control).
 - [ ] Add live weather and news API integrations.
