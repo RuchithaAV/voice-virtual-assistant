@@ -1,5 +1,6 @@
 import sounddevice as sd 
 
+
 SAMPLE_RATE = 16000
 DURATION = 5
 
