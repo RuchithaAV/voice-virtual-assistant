@@ -8,8 +8,8 @@ A modular Python-based voice and text virtual assistant project built step-by-st
 
 ```text
 voice-virtual-assistant/
-|-- main.py                 # Main voice assistant with noise reduction, STT, and TTS
-|-- llm_test.py             # Local LLM response generation test (Ollama)
+|-- main.py                 # Full voice assistant with noise reduction, STT, Ollama LLM, and TTS
+|-- llm_test.py             # Standalone local LLM response generation test (Ollama)
 |-- speech_to_text_test.py  # Standalone STT transcription test with noise reduction
 |-- microphone_test.py      # Microphone recording and playback hardware test
 |-- speech_test.py          # Standalone Text-to-Speech (TTS) test (pyttsx3)
@@ -19,14 +19,29 @@ voice-virtual-assistant/
 
 ---
 
+## Architecture and Workflow
+
+The core assistant in `main.py` executes the following sequential pipeline:
+
+1. **Noise Profiling**: Measures a 2-second ambient noise profile on startup.
+2. **Audio Capture**: Records 5 seconds of 16 kHz mono microphone audio via `sounddevice`.
+3. **Noise Reduction**: Cleans the input signal using `noisereduce` against the initial noise baseline.
+4. **Speech-to-Text**: Converts processed audio to text using the Google Speech Recognition API (`speech_recognition`).
+5. **Command & LLM Routing**:
+   - Matches built-in commands (`hello`, `time`, `exit`).
+   - Routes open-ended questions to a local **Ollama** model (`qwen3:1.7b`) for concise, intelligent answers.
+6. **Text-to-Speech Output**: Speaks the response aloud using the native Windows SAPI voice engine (`win32com.client`).
+
+---
+
 ## Features Implemented
 
-- **Voice-Driven Assistant Loop**: Listens for user speech, transcribes commands in real time, and speaks responses aloud using Windows SAPI (`win32com.client`).
-- **Ambient Noise Calibration & Reduction**: Measures a 2-second background noise profile at startup and applies spectral noise reduction (`noisereduce` and `numpy`) before audio transcription.
-- **Speech-to-Text (STT)**: Captures 16 kHz mono audio via `sounddevice` and transcribes using the Google Speech Recognition API with comprehensive error handling.
-- **Text-to-Speech (TTS)**: Delivers spoken voice responses using Windows SAPI (`SAPI.SpVoice`) and `pyttsx3`.
-- **Local LLM Intelligence**: Queries a locally running Ollama instance (`qwen3:1.7b`) with concise system prompting and response latency tracking.
-- **Hardware Diagnostics**: Dedicated standalone scripts for testing microphone input, speaker playback, speech recognition, and LLM inference independently.
+- **Voice-Driven Assistant Loop**: Fully hands-free voice interaction loop with real-time feedback and clean `Ctrl+C` interrupt handling.
+- **Ambient Noise Calibration & Reduction**: Dynamic background noise subtraction ensures higher transcription accuracy in everyday environments.
+- **Speech Recognition (STT)**: High-accuracy speech transcription with automatic fallbacks for unrecognized speech or network timeouts.
+- **Local AI Intelligence (LLM)**: Offline, private conversational AI powered by Ollama (`qwen3:1.7b`), constrained to short voice-friendly responses.
+- **Text-to-Speech (TTS)**: Fast, natural speech synthesis via Windows SAPI.
+- **Hardware & Component Tests**: Dedicated standalone diagnostic scripts to test microphone capture, audio playback, TTS synthesis, STT transcription, and LLM latency individually.
 
 ---
 
@@ -36,7 +51,10 @@ voice-virtual-assistant/
 - Python 3.10+ (tested with Python 3.13)
 - Windows OS (for native Windows SAPI TTS)
 - Working microphone and audio output device
-- Ollama installed and running locally (`ollama run qwen3:1.7b`)
+- Ollama installed and running locally with the target model:
+  ```powershell
+  ollama run qwen3:1.7b
+  ```
 
 ### 2. Virtual Environment Setup
 
@@ -58,40 +76,37 @@ pip install sounddevice SpeechRecognition pywin32 pyttsx3 numpy noisereduce olla
 ## Running the Modules
 
 ### 1. Main Voice Assistant
-Calibrates ambient noise, listens to voice commands, and responds with voice:
+Runs the full end-to-end voice assistant:
 ```powershell
 python main.py
 ```
-*(Or run directly with the virtual environment interpreter: `.\.venv\Scripts\python.exe main.py`)*
+*(Or run directly with the virtual environment executable: `.\.venv\Scripts\python.exe main.py`)*
 
-### 2. Local LLM Test
-Sends a prompt to the local Ollama instance and prints the response along with inference time:
-```powershell
-python llm_test.py
-```
+### 2. Standalone Diagnostic Tests
 
-### 3. Speech-to-Text Test with Noise Reduction
-Measures 2 seconds of ambient silence, records 5 seconds of speech, applies noise reduction, and prints transcribed text:
-```powershell
-python speech_to_text_test.py
-```
-
-### 4. Microphone Recording and Playback Test
-Records 5 seconds of microphone audio and immediately plays it back to verify hardware functionality:
-```powershell
-python microphone_test.py
-```
-
-### 5. Text-to-Speech Test
-Verifies that the TTS engine can synthesize and speak text:
-```powershell
-python speech_test.py
-```
+- **Local LLM Test**:
+  ```powershell
+  python llm_test.py
+  ```
+- **Speech-to-Text with Noise Reduction**:
+  ```powershell
+  python speech_to_text_test.py
+  ```
+- **Microphone Hardware Loopback**:
+  ```powershell
+  python microphone_test.py
+  ```
+- **Text-to-Speech Synthesis**:
+  ```powershell
+  python speech_test.py
+  ```
 
 ---
 
 ## Roadmap
 
-- Integrate local LLM fallback into `main.py` for queries beyond fixed commands.
-- Implement continuous listening / wake word activation.
-- Add additional skills (system automation, weather lookups, web searching).
+- [x] Integrate local LLM intelligence directly into the main voice loop.
+- [ ] Implement continuous listening / wake word activation (e.g., "Hey Assistant").
+- [ ] Add system automation skills (opening applications, browser searches, volume control).
+- [ ] Add live weather and news API integrations.
+
