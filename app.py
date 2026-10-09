@@ -56,10 +56,21 @@ st.markdown(
         color: #888888;
         margin-top: 0.25rem;
     }
+    .voice-input-container {
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 10px;
+        padding: 0.5rem 0.8rem;
+        margin-top: 1.2rem;
+        margin-bottom: 0.4rem;
+        font-size: 0.9rem;
+        color: #cccccc;
+    }
     </style>
     """,
     unsafe_allow_html=True,
 )
+
 
 # Session State Initialization
 if "messages" not in st.session_state:
@@ -272,117 +283,114 @@ with st.sidebar:
 st.markdown('<div class="main-title">Voice Virtual Assistant</div>', unsafe_allow_html=True)
 st.markdown(f'<div class="sub-title">Running with <strong>{ai_provider}</strong> ({selected_model})</div>', unsafe_allow_html=True)
 
-col_chat, col_audio = st.columns([2.5, 1.2], gap="large")
+# 1. Render Full Conversation History
+for msg in st.session_state.messages:
+    with st.chat_message(msg["role"]):
+        st.write(msg["content"])
+        if msg.get("url"):
+            st.link_button("Open Link in Browser", msg["url"])
+        if msg.get("audio"):
+            st.audio(msg["audio"], format=msg.get("format", "audio/wav"))
+        if msg.get("latency"):
+            st.markdown(f'<div class="metric-caption">Response time: {msg["latency"]:.2f}s</div>', unsafe_allow_html=True)
 
-with col_audio:
-    st.subheader("Voice Recording")
-    st.caption("Click to record your voice command:")
-    audio_data = st.audio_input("Record Voice Command", label_visibility="collapsed")
+# 2. Voice Input Section (Placed directly above the chat box)
+st.markdown('<div class="voice-input-container"><strong>Microphone Voice Input</strong>: Click to speak your question</div>', unsafe_allow_html=True)
+audio_data = st.audio_input("Record Voice Command", label_visibility="collapsed")
 
-with col_chat:
-    # Render Conversation History
-    for msg in st.session_state.messages:
-        with st.chat_message(msg["role"]):
-            st.write(msg["content"])
-            if msg.get("url"):
-                st.link_button("Open Link in Browser", msg["url"])
-            if msg.get("audio"):
-                st.audio(msg["audio"], format=msg.get("format", "audio/wav"))
-            if msg.get("latency"):
-                st.markdown(f'<div class="metric-caption">Response time: {msg["latency"]:.2f}s</div>', unsafe_allow_html=True)
+# 3. Handle Audio Input Processing
+if audio_data is not None:
+    audio_bytes = audio_data.getvalue()
+    if st.session_state.last_processed_audio != audio_bytes:
+        st.session_state.last_processed_audio = audio_bytes
 
-    # Handle Audio Input
-    if audio_data is not None:
-        audio_bytes = audio_data.getvalue()
-        if st.session_state.last_processed_audio != audio_bytes:
-            st.session_state.last_processed_audio = audio_bytes
+        with st.spinner("Transcribing voice..."):
+            transcribed_text = transcribe_audio(audio_bytes)
 
-            with st.spinner("Transcribing voice..."):
-                transcribed_text = transcribe_audio(audio_bytes)
+        if transcribed_text:
+            st.session_state.messages.append({"role": "user", "content": transcribed_text, "audio": None, "latency": None, "url": None, "format": None})
+            with st.chat_message("user"):
+                st.write(transcribed_text)
 
-            if transcribed_text:
-                st.session_state.messages.append({"role": "user", "content": transcribed_text, "audio": None, "latency": None, "url": None, "format": None})
-                with st.chat_message("user"):
-                    st.write(transcribed_text)
+            with st.chat_message("assistant"):
+                start_time = perf_counter()
+                with st.spinner("Thinking..."):
+                    assistant_response, target_url = process_command(
+                        user_query=transcribed_text,
+                        provider=ai_provider,
+                        model_name=selected_model,
+                        history=st.session_state.messages[:-1],
+                        api_key=api_key_input,
+                    )
 
-                with st.chat_message("assistant"):
-                    start_time = perf_counter()
-                    with st.spinner("Thinking..."):
-                        assistant_response, target_url = process_command(
-                            user_query=transcribed_text,
-                            provider=ai_provider,
-                            model_name=selected_model,
-                            history=st.session_state.messages[:-1],
-                            api_key=api_key_input,
-                        )
+                audio_response_bytes, audio_fmt = None, "audio/wav"
+                if enable_voice_reply:
+                    with st.spinner("Generating audio..."):
+                        audio_response_bytes, audio_fmt = generate_speech(assistant_response)
 
-                    audio_response_bytes, audio_fmt = None, "audio/wav"
-                    if enable_voice_reply:
-                        with st.spinner("Generating audio..."):
-                            audio_response_bytes, audio_fmt = generate_speech(assistant_response)
+                elapsed = perf_counter() - start_time
+                st.write(assistant_response)
+                if target_url:
+                    st.link_button("Open Link in Browser", target_url)
+                if audio_response_bytes:
+                    st.audio(audio_response_bytes, format=audio_fmt, autoplay=True)
+                st.markdown(f'<div class="metric-caption">Response time: {elapsed:.2f}s</div>', unsafe_allow_html=True)
 
-                    elapsed = perf_counter() - start_time
-                    st.write(assistant_response)
-                    if target_url:
-                        st.link_button("Open Link in Browser", target_url)
-                    if audio_response_bytes:
-                        st.audio(audio_response_bytes, format=audio_fmt, autoplay=True)
-                    st.markdown(f'<div class="metric-caption">Response time: {elapsed:.2f}s</div>', unsafe_allow_html=True)
+            st.session_state.messages.append(
+                {
+                    "role": "assistant",
+                    "content": assistant_response,
+                    "audio": audio_response_bytes,
+                    "latency": elapsed,
+                    "url": target_url,
+                    "format": audio_fmt,
+                }
+            )
+        else:
+            st.error("Could not understand audio. Please try speaking again.")
 
-                st.session_state.messages.append(
-                    {
-                        "role": "assistant",
-                        "content": assistant_response,
-                        "audio": audio_response_bytes,
-                        "latency": elapsed,
-                        "url": target_url,
-                        "format": audio_fmt,
-                    }
-                )
-            else:
-                st.error("Could not understand audio. Please try speaking again.")
+# 4. Handle Text Chat Input
+user_text_input = st.chat_input("Or type your question here...")
+if user_text_input:
+    st.session_state.messages.append({"role": "user", "content": user_text_input, "audio": None, "latency": None, "url": None, "format": None})
+    with st.chat_message("user"):
+        st.write(user_text_input)
 
-    # Handle Text Input
-    user_text_input = st.chat_input("Or type your question here...")
-    if user_text_input:
-        st.session_state.messages.append({"role": "user", "content": user_text_input, "audio": None, "latency": None, "url": None, "format": None})
-        with st.chat_message("user"):
-            st.write(user_text_input)
+    with st.chat_message("assistant"):
+        start_time = perf_counter()
+        with st.spinner("Thinking..."):
+            assistant_response, target_url = process_command(
+                user_query=user_text_input,
+                provider=ai_provider,
+                model_name=selected_model,
+                history=st.session_state.messages[:-1],
+                api_key=api_key_input,
+            )
 
-        with st.chat_message("assistant"):
-            start_time = perf_counter()
-            with st.spinner("Thinking..."):
-                assistant_response, target_url = process_command(
-                    user_query=user_text_input,
-                    provider=ai_provider,
-                    model_name=selected_model,
-                    history=st.session_state.messages[:-1],
-                    api_key=api_key_input,
-                )
+        audio_response_bytes, audio_fmt = None, "audio/wav"
+        if enable_voice_reply:
+            with st.spinner("Generating audio..."):
+                audio_response_bytes, audio_fmt = generate_speech(assistant_response)
 
-            audio_response_bytes, audio_fmt = None, "audio/wav"
-            if enable_voice_reply:
-                with st.spinner("Generating audio..."):
-                    audio_response_bytes, audio_fmt = generate_speech(assistant_response)
+        elapsed = perf_counter() - start_time
+        st.write(assistant_response)
+        if target_url:
+            st.link_button("Open Link in Browser", target_url)
+        if audio_response_bytes:
+            st.audio(audio_response_bytes, format=audio_fmt, autoplay=True)
+        st.markdown(f'<div class="metric-caption">Response time: {elapsed:.2f}s</div>', unsafe_allow_html=True)
 
-            elapsed = perf_counter() - start_time
-            st.write(assistant_response)
-            if target_url:
-                st.link_button("Open Link in Browser", target_url)
-            if audio_response_bytes:
-                st.audio(audio_response_bytes, format=audio_fmt, autoplay=True)
-            st.markdown(f'<div class="metric-caption">Response time: {elapsed:.2f}s</div>', unsafe_allow_html=True)
+    st.session_state.messages.append(
+        {
+            "role": "assistant",
+            "content": assistant_response,
+            "audio": audio_response_bytes,
+            "latency": elapsed,
+            "url": target_url,
+            "format": audio_fmt,
+        }
+    )
 
-        st.session_state.messages.append(
-            {
-                "role": "assistant",
-                "content": assistant_response,
-                "audio": audio_response_bytes,
-                "latency": elapsed,
-                "url": target_url,
-                "format": audio_fmt,
-            }
-        )
 
 
 
