@@ -272,9 +272,9 @@ with st.sidebar:
     st.markdown(
         """
         **Hybrid Architecture:**
-        - **Local Ollama**: 100% private, offline 2B model.
-        - **Cloud Groq**: 70B parameter model with near-instant inference (<0.4s).
-        - **Google Gemini**: Deep reasoning with latest web knowledge.
+        - **Local Ollama**: 100% private, offline model (`qwen3:1.7b` by default).
+        - **Cloud Groq**: Fast cloud inference with LLaMA 3.1 (8B by default, 70B selectable).
+        - **Google Gemini**: Multimodal reasoning via Gemini Flash models.
         """
     )
 

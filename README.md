@@ -2,6 +2,8 @@
 
 A modular Python-based voice and text virtual assistant project built step-by-step for learning, experimentation, local AI integration, cloud LLM scaling, system automation, and interactive web visualization.
 
+![Streamlit web interface](docs/screenshot.png)
+
 ---
 
 ## Project Structure
@@ -49,8 +51,8 @@ The voice assistant executes the following pipeline:
 
 - **Hybrid AI Brain (Local + Cloud)**:
   - **Local Ollama**: 100% offline and private.
-  - **Groq Cloud**: High-speed reasoning powered by LLaMA 3.1 (<0.4s response time).
-  - **Google Gemini**: Deep explanations and up-to-date knowledge via Gemini 3.8 Flash.
+  - **Groq Cloud**: Fast cloud inference with LLaMA 3.1 (8B by default, 70B selectable).
+  - **Google Gemini**: Deep explanations via Google Gemini Flash models.
 - **Deterministic Real-Time Skills (`skills.py`)**:
   - **Live Weather Lookup**: Real-time temperature, humidity, wind, and conditions via Open-Meteo API.
   - **Encyclopedic Knowledge (Wikipedia RAG)**: Instant factual summaries for people, scientific concepts, and history.
@@ -182,5 +184,5 @@ pytest
 - [x] Build an interactive Streamlit web interface with microphone recording and audio playback.
 - [x] Implement multi-turn conversation memory and contextual follow-up understanding.
 - [x] Add system automation skills (opening applications, browser searches, volume control).
-- [x] Add Hybrid Cloud AI option (Groq 70B and Google Gemini Flash support).
+- [x] Add Hybrid Cloud AI option (Groq LLaMA 3.1 and Google Gemini Flash support).
 - [x] Add deterministic real-time skills (Open-Meteo Weather, Wikipedia RAG summary, Date/Time, System Diagnostics).

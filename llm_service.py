@@ -212,7 +212,7 @@ def query_gemini(
                 else:
                     return f"Google Gemini error: {candidate_err}."
 
-        return f"Google Gemini quota exceeded ({last_error}). Please select 'gemini-3.8-flash' or switch to 'Cloud (Groq)' in the sidebar for unlimited high-speed inference."
+        return f"Google Gemini quota exceeded ({last_error}). Please select 'gemini-3.8-flash' or switch to 'Cloud (Groq)' in the sidebar for fast high-speed inference."
     except Exception as error:
         return f"Google Gemini error: {error}."
 
