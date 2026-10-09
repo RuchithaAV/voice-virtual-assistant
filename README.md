@@ -12,10 +12,13 @@ voice-virtual-assistant/
 |-- main.py                 # Terminal voice assistant with noise reduction, STT, hybrid LLM, and TTS
 |-- llm_service.py          # Unified AI router (Local Ollama, Cloud Groq, Google Gemini)
 |-- skills.py               # System automation skills engine (apps, web search, volume control)
+|-- tests/
+|   `-- test_skills.py      # Unit tests for automation skills and URL security
 |-- llm_test.py             # Standalone local LLM response generation test (Ollama)
 |-- speech_to_text_test.py  # Standalone STT transcription test with noise reduction
 |-- microphone_test.py      # Microphone recording and playback hardware test
 |-- speech_test.py          # Standalone Text-to-Speech (TTS) test (pyttsx3)
+|-- requirements.txt        # Project dependencies list
 |-- .env.example            # Environment variable template for optional Cloud API keys
 |-- README.md               # Project documentation
 `-- .venv/                  # Python virtual environment (git-ignored)
@@ -122,7 +125,15 @@ python main.py
 ```
 *(Or run directly with the virtual environment executable: `.\.venv\Scripts\python.exe main.py`)*
 
-### 3. Standalone Diagnostic Tests
+### 3. Running Unit Tests
+
+Run the automated pytest test suite:
+```powershell
+python -m pytest tests -v
+```
+*(Note: Always pass `tests` to pytest. The `*_test.py` scripts in the project root directory are interactive manual hardware diagnostic checks, not automated pytest unit tests).*
+
+### 4. Standalone Hardware Diagnostic Tests
 
 - **Local LLM Test**:
   ```powershell
@@ -142,6 +153,7 @@ python main.py
   ```
 
 ---
+
 
 ## Commands Supported
 

@@ -1,0 +1,15 @@
+sounddevice
+SpeechRecognition
+pywin32
+pyttsx3
+numpy
+noisereduce
+ollama
+streamlit
+gTTS
+groq
+google-genai
+python-dotenv
+psutil
+requests
+pytest

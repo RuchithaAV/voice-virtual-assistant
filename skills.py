@@ -4,6 +4,7 @@ import os
 import re
 import subprocess
 import urllib.parse
+from urllib.parse import urlparse
 import webbrowser
 import psutil
 import requests
@@ -61,6 +62,10 @@ WEBSITE_MAPPINGS = {
     "stackoverflow": "https://stackoverflow.com",
     "stack overflow": "https://stackoverflow.com",
 }
+
+# Regex for matching domain names exactly
+DOMAIN_RE = re.compile(r"[a-z0-9-]+(\.[a-z0-9-]+)*\.(com|org|net|io|in|co|edu|gov|ai|app|dev)")
+
 
 # Weather code descriptions from WMO
 WEATHER_CODES = {
@@ -253,39 +258,20 @@ def get_wikipedia_summary(topic: str) -> tuple[bool, str, str | None]:
 
 
 def launch_url(url: str) -> bool:
-    """Robustly opens a URL in Windows using native ShellExecute, browser executables, and cmd."""
+    """Safely opens a URL in the default browser without shell execution or command injection."""
     if not url.startswith(("http://", "https://")):
         url = f"https://{url}"
 
-    # 1. Native Windows ShellExecute
-    try:
-        os.startfile(url)
-        return True
-    except Exception:
-        pass
+    # Disallow dangerous characters that could be exploited in command execution.
+    # Note: Running shell=True with interpolated text is dangerous because a quote (")
+    # closes the quoted URL and an ampersand (&) or pipe (|) chains a second command in cmd.exe.
+    if any(char in url for char in (" ", '"', "&", "|", "<", ">", "^")):
+        return False
 
-    # 2. Windows start command
-    try:
-        subprocess.Popen(f'start "" "{url}"', shell=True)
-        return True
-    except Exception:
-        pass
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https") or not parsed.netloc:
+        return False
 
-    # 3. Direct browser binaries (Chrome, Brave, Edge)
-    known_browsers = [
-        r"C:\Program Files\Google\Chrome\Application\chrome.exe",
-        r"C:\Program Files\BraveSoftware\Brave-Browser\Application\brave.exe",
-        r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
-    ]
-    for browser_path in known_browsers:
-        if os.path.exists(browser_path):
-            try:
-                subprocess.Popen([browser_path, url])
-                return True
-            except Exception:
-                continue
-
-    # 4. Python standard webbrowser fallback
     try:
         return webbrowser.open(url, new=2)
     except Exception:
@@ -295,13 +281,13 @@ def launch_url(url: str) -> bool:
 def launch_application(target: str) -> tuple[bool, str]:
     """Attempts to launch a registered desktop application."""
     target_clean = target.strip().lower()
-    for name, cmd in APP_MAPPINGS.items():
-        if name in target_clean:
-            try:
-                subprocess.Popen(cmd)
-                return True, f"Opening {name.title()}."
-            except Exception as error:
-                return False, f"Failed to open {name.title()}: {error}"
+    cmd = APP_MAPPINGS.get(target_clean)
+    if cmd:
+        try:
+            subprocess.Popen(cmd)
+            return True, f"Opening {target_clean.title()}."
+        except Exception as error:
+            return False, f"Failed to open {target_clean.title()}: {error}"
     return False, f"Could not find application matching '{target}'."
 
 
@@ -323,13 +309,13 @@ def open_website(site_name: str) -> tuple[bool, str, str | None]:
     site_clean = site_name.strip().lower()
 
     # Check known mappings
-    for name, url in WEBSITE_MAPPINGS.items():
-        if site_clean == name or site_clean.startswith(name + " ") or site_clean.endswith(" " + name):
-            launch_url(url)
-            return True, f"Opening {name.title()} in your browser.", url
+    url = WEBSITE_MAPPINGS.get(site_clean)
+    if url:
+        launch_url(url)
+        return True, f"Opening {site_clean.title()} in your browser.", url
 
     # Check for direct domains (e.g. 'google.com', 'kaggle.com', 'news.ycombinator.com')
-    if re.search(r"\b[a-zA-Z0-9-]+\.(com|org|net|io|in|co|edu|gov|ai|app|dev)\b", site_clean):
+    if DOMAIN_RE.fullmatch(site_clean):
         target_url = site_clean
         if not target_url.startswith(("http://", "https://")):
             target_url = f"https://{target_url}"
@@ -337,6 +323,7 @@ def open_website(site_name: str) -> tuple[bool, str, str | None]:
         return True, f"Opening {site_clean} in your browser.", target_url
 
     return False, f"Website '{site_name}' not recognized.", None
+
 
 
 def execute_skill(command: str) -> tuple[bool, str | None, str | None]:
