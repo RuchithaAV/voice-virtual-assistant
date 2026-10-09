@@ -92,17 +92,38 @@ def transcribe_audio(audio_bytes: bytes) -> str | None:
         return None
 
 
-# Helper: Generate TTS Audio (MP3)
-def generate_speech(text: str) -> bytes | None:
+import tempfile
+import win32com.client
+
+
+# Helper: Generate TTS Audio (Local Windows SAPI WAV or Cloud gTTS MP3)
+def generate_speech(text: str) -> tuple[bytes | None, str]:
+    # 1. Native Offline Windows SAPI TTS (Instant, Zero Network Latency)
+    try:
+        temp_wav = os.path.join(tempfile.gettempdir(), f"assistant_tts_{os.getpid()}.wav")
+        speaker = win32com.client.Dispatch("SAPI.SpVoice")
+        file_stream = win32com.client.Dispatch("SAPI.SpFileStream")
+        file_stream.Open(temp_wav, 3, False)
+        speaker.AudioOutputStream = file_stream
+        speaker.Speak(text)
+        file_stream.Close()
+        with open(temp_wav, "rb") as f:
+            data = f.read()
+        return data, "audio/wav"
+    except Exception:
+        pass
+
+    # 2. Online gTTS Fallback
     try:
         fp = io.BytesIO()
         tts = gTTS(text=text, lang="en")
         tts.write_to_fp(fp)
         fp.seek(0)
-        return fp.getvalue()
+        return fp.getvalue(), "audio/mp3"
     except Exception as error:
         st.warning(f"Voice synthesis error: {error}")
-        return None
+        return None, "audio/mp3"
+
 
 
 # Helper: Route command, execute system skills, or send to LLM
@@ -266,7 +287,7 @@ with col_chat:
             if msg.get("url"):
                 st.link_button("Open Link in Browser", msg["url"])
             if msg.get("audio"):
-                st.audio(msg["audio"], format="audio/mp3")
+                st.audio(msg["audio"], format=msg.get("format", "audio/wav"))
             if msg.get("latency"):
                 st.markdown(f'<div class="metric-caption">Response time: {msg["latency"]:.2f}s</div>', unsafe_allow_html=True)
 
@@ -280,7 +301,7 @@ with col_chat:
                 transcribed_text = transcribe_audio(audio_bytes)
 
             if transcribed_text:
-                st.session_state.messages.append({"role": "user", "content": transcribed_text, "audio": None, "latency": None, "url": None})
+                st.session_state.messages.append({"role": "user", "content": transcribed_text, "audio": None, "latency": None, "url": None, "format": None})
                 with st.chat_message("user"):
                     st.write(transcribed_text)
 
@@ -295,17 +316,17 @@ with col_chat:
                             api_key=api_key_input,
                         )
 
-                    audio_response_bytes = None
+                    audio_response_bytes, audio_fmt = None, "audio/wav"
                     if enable_voice_reply:
                         with st.spinner("Generating audio..."):
-                            audio_response_bytes = generate_speech(assistant_response)
+                            audio_response_bytes, audio_fmt = generate_speech(assistant_response)
 
                     elapsed = perf_counter() - start_time
                     st.write(assistant_response)
                     if target_url:
                         st.link_button("Open Link in Browser", target_url)
                     if audio_response_bytes:
-                        st.audio(audio_response_bytes, format="audio/mp3", autoplay=True)
+                        st.audio(audio_response_bytes, format=audio_fmt, autoplay=True)
                     st.markdown(f'<div class="metric-caption">Response time: {elapsed:.2f}s</div>', unsafe_allow_html=True)
 
                 st.session_state.messages.append(
@@ -315,6 +336,7 @@ with col_chat:
                         "audio": audio_response_bytes,
                         "latency": elapsed,
                         "url": target_url,
+                        "format": audio_fmt,
                     }
                 )
             else:
@@ -323,7 +345,7 @@ with col_chat:
     # Handle Text Input
     user_text_input = st.chat_input("Or type your question here...")
     if user_text_input:
-        st.session_state.messages.append({"role": "user", "content": user_text_input, "audio": None, "latency": None, "url": None})
+        st.session_state.messages.append({"role": "user", "content": user_text_input, "audio": None, "latency": None, "url": None, "format": None})
         with st.chat_message("user"):
             st.write(user_text_input)
 
@@ -338,17 +360,17 @@ with col_chat:
                     api_key=api_key_input,
                 )
 
-            audio_response_bytes = None
+            audio_response_bytes, audio_fmt = None, "audio/wav"
             if enable_voice_reply:
                 with st.spinner("Generating audio..."):
-                    audio_response_bytes = generate_speech(assistant_response)
+                    audio_response_bytes, audio_fmt = generate_speech(assistant_response)
 
             elapsed = perf_counter() - start_time
             st.write(assistant_response)
             if target_url:
                 st.link_button("Open Link in Browser", target_url)
             if audio_response_bytes:
-                st.audio(audio_response_bytes, format="audio/mp3", autoplay=True)
+                st.audio(audio_response_bytes, format=audio_fmt, autoplay=True)
             st.markdown(f'<div class="metric-caption">Response time: {elapsed:.2f}s</div>', unsafe_allow_html=True)
 
         st.session_state.messages.append(
@@ -358,8 +380,10 @@ with col_chat:
                 "audio": audio_response_bytes,
                 "latency": elapsed,
                 "url": target_url,
+                "format": audio_fmt,
             }
         )
+
 
 
 

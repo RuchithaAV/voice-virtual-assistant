@@ -116,11 +116,10 @@ def query_groq(
 
 
 def get_available_gemini_models(api_key: str | None = None) -> list[str]:
-    """Retrieves available model IDs from Gemini API or returns supported defaults."""
+    """Retrieves available free-tier Flash model IDs from Gemini API or returns supported defaults."""
     default_models = [
         "gemini-3.8-flash",
         "gemini-flash-latest",
-        "gemini-pro-latest",
         "gemini-2.5-flash-lite",
     ]
     key = api_key or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
@@ -133,11 +132,11 @@ def get_available_gemini_models(api_key: str | None = None) -> list[str]:
         active = []
         for m in models_data:
             clean_name = m.name.replace("models/", "") if hasattr(m, "name") else str(m)
-            if "flash" in clean_name or "pro" in clean_name:
+            # Only include Flash models for reliable free tier quota
+            if "flash" in clean_name and "pro" not in clean_name:
                 if not any(x in clean_name for x in ("preview-tts", "imagen", "embedding", "aqa", "experimental")):
                     active.append(clean_name)
         if active:
-            # Ensure 3.8-flash is at the top if present
             if "gemini-3.8-flash" in active:
                 active.remove("gemini-3.8-flash")
                 active.insert(0, "gemini-3.8-flash")
@@ -153,7 +152,7 @@ def query_gemini(
     history: list[dict] | None = None,
     api_key: str | None = None,
 ) -> str:
-    """Queries Google Gemini API with system instructions and chat history."""
+    """Queries Google Gemini API with system instructions, chat history, and automatic fallback."""
     key = api_key or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
     if not key:
         return "Gemini API key missing. Please provide your API key in settings or set GEMINI_API_KEY in .env."
@@ -170,13 +169,34 @@ def query_gemini(
 
         conversation_context += f"User: {prompt}\nAssistant:"
 
-        response = client.models.generate_content(
-            model=model_name,
-            contents=conversation_context,
-        )
-        return response.text.strip()
+        # Candidate models list with fallback if chosen model is busy or hits quota
+        candidate_models = [model_name]
+        for fallback in ("gemini-3.8-flash", "gemini-flash-latest", "gemini-2.5-flash-lite"):
+            if fallback not in candidate_models:
+                candidate_models.append(fallback)
+
+        last_error = None
+        for candidate in candidate_models:
+            try:
+                response = client.models.generate_content(
+                    model=candidate,
+                    contents=conversation_context,
+                )
+                return response.text.strip()
+            except Exception as candidate_err:
+                last_error = candidate_err
+                err_str = str(candidate_err)
+                # If 503 high demand, 404 not found, or 429 quota on a specific model, try next candidate
+                if any(x in err_str for x in ("503", "404", "429", "UNAVAILABLE", "RESOURCE_EXHAUSTED")):
+                    continue
+                else:
+                    return f"Google Gemini error: {candidate_err}."
+
+        return f"Google Gemini quota exceeded ({last_error}). Please select 'gemini-3.8-flash' or switch to 'Cloud (Groq)' in the sidebar for unlimited high-speed inference."
     except Exception as error:
         return f"Google Gemini error: {error}."
+
+
 
 
 def query_llm(

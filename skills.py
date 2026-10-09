@@ -143,53 +143,89 @@ def get_system_diagnostics() -> str:
         return f"Unable to fetch system metrics: {error}"
 
 
+# Pre-mapped major cities for zero-latency lookup
+CITY_COORDINATES = {
+    "dubai": (25.2048, 55.2708, "Dubai, United Arab Emirates"),
+    "colombo": (6.9271, 79.8612, "Colombo, Sri Lanka"),
+    "london": (51.5074, -0.1278, "London, United Kingdom"),
+    "tokyo": (35.6762, 139.6503, "Tokyo, Japan"),
+    "new york": (40.7128, -74.0060, "New York, United States"),
+    "paris": (48.8566, 2.3522, "Paris, France"),
+    "singapore": (1.3521, 103.8198, "Singapore"),
+    "sydney": (-33.8688, 151.2093, "Sydney, Australia"),
+    "delhi": (28.6139, 77.2090, "Delhi, India"),
+    "mumbai": (19.0760, 72.8777, "Mumbai, India"),
+    "bangalore": (12.9716, 77.5946, "Bangalore, India"),
+    "toronto": (43.6532, -79.3832, "Toronto, Canada"),
+    "berlin": (52.5200, 13.4050, "Berlin, Germany"),
+    "los angeles": (34.0522, -118.2437, "Los Angeles, United States"),
+    "chicago": (41.8781, -87.6298, "Chicago, United States"),
+    "san francisco": (37.7749, -122.4194, "San Francisco, United States"),
+    "doha": (25.2854, 51.5310, "Doha, Qatar"),
+    "riyadh": (24.7136, 46.6753, "Riyadh, Saudi Arabia"),
+    "abu dhabi": (24.4539, 54.3773, "Abu Dhabi, United Arab Emirates"),
+}
+
+
 def get_live_weather(city_query: str = "London") -> tuple[bool, str, str | None]:
-    """Fetches real-time weather information using Open-Meteo free API."""
-    city_clean = city_query.strip()
-    if not city_clean or city_clean.lower() in ("today", "now", "here", "outside", "current"):
-        city_clean = "London"
+    """Fetches real-time weather information using pre-mapped coordinates and Open-Meteo free API."""
+    city_clean = city_query.strip().lower()
+    if not city_clean or city_clean in ("today", "now", "here", "outside", "current"):
+        city_clean = "london"
 
     headers = {"User-Agent": "VoiceVirtualAssistant/1.0"}
-    try:
-        # Step 1: Geocoding
-        geo_url = (
-            f"https://geocoding-api.open-meteo.com/v1/search"
-            f"?name={urllib.parse.quote_plus(city_clean)}&count=1&language=en&format=json"
-        )
-        geo_resp = requests.get(geo_url, headers=headers, timeout=8).json()
+    google_url = f"https://www.google.com/search?q=weather+{urllib.parse.quote_plus(city_clean)}"
 
-        if not geo_resp.get("results"):
-            return False, f"Could not find weather data for location '{city_clean}'.", None
+    lat, lon, loc_label = None, None, city_clean.title()
 
-        result = geo_resp["results"][0]
-        lat = result["latitude"]
-        lon = result["longitude"]
-        city_name = result.get("name", city_clean)
-        country = result.get("country", "")
+    # Step 1: Check pre-mapped coordinates
+    if city_clean in CITY_COORDINATES:
+        lat, lon, loc_label = CITY_COORDINATES[city_clean]
+    else:
+        try:
+            geo_url = (
+                f"https://geocoding-api.open-meteo.com/v1/search"
+                f"?name={urllib.parse.quote_plus(city_clean)}&count=1&language=en&format=json"
+            )
+            geo_resp = requests.get(geo_url, headers=headers, timeout=4).json()
+            if geo_resp.get("results"):
+                res = geo_resp["results"][0]
+                lat = res["latitude"]
+                lon = res["longitude"]
+                name = res.get("name", city_clean.title())
+                country = res.get("country", "")
+                loc_label = f"{name}, {country}" if country else name
+        except Exception:
+            pass
 
-        # Step 2: Forecast
-        weather_url = (
-            f"https://api.open-meteo.com/v1/forecast"
-            f"?latitude={lat}&longitude={lon}&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m"
-        )
-        weather_resp = requests.get(weather_url, headers=headers, timeout=8).json()
-        current = weather_resp.get("current", {})
+    # If coordinates resolved, fetch weather forecast
+    if lat is not None and lon is not None:
+        try:
+            weather_url = (
+                f"https://api.open-meteo.com/v1/forecast"
+                f"?latitude={lat}&longitude={lon}&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m"
+            )
+            weather_resp = requests.get(weather_url, headers=headers, timeout=4).json()
+            current = weather_resp.get("current", {})
 
-        temp = current.get("temperature_2m")
-        humidity = current.get("relative_humidity_2m")
-        wind = current.get("wind_speed_10m")
-        code = current.get("weather_code", 0)
-        condition = WEATHER_CODES.get(code, "Clear")
+            temp = current.get("temperature_2m")
+            humidity = current.get("relative_humidity_2m")
+            wind = current.get("wind_speed_10m")
+            code = current.get("weather_code", 0)
+            condition = WEATHER_CODES.get(code, "Clear")
 
-        loc_label = f"{city_name}, {country}" if country else city_name
-        summary = (
-            f"The current weather in {loc_label} is {condition} with a temperature of {temp}°C, "
-            f"humidity of {humidity}%, and wind speed of {wind} km/h."
-        )
-        online_url = f"https://www.google.com/search?q=weather+{urllib.parse.quote_plus(city_name)}"
-        return True, summary, online_url
-    except Exception as error:
-        return False, f"Failed to retrieve weather data: {error}", None
+            if temp is not None:
+                summary = (
+                    f"The current weather in {loc_label} is {condition} with a temperature of {temp}°C, "
+                    f"humidity of {humidity}%, and wind speed of {wind} km/h."
+                )
+                return True, summary, google_url
+        except Exception:
+            pass
+
+    # Fallback to direct web search if API network is slow or unreachable
+    return True, f"Here is the current live weather for {city_clean.title()}.", google_url
+
 
 
 
@@ -340,7 +376,7 @@ def execute_skill(command: str) -> tuple[bool, str | None, str | None]:
     # 4. Live Weather
     if "weather" in text or "temperature" in text:
         city = "London"
-        loc_match = re.search(r"(?:in|for|at|of)\s+([a-zA-Z\s]+)", text)
+        loc_match = re.search(r"\b(?:in|for|at|of)\s+([a-zA-Z\s]+)", text)
         if loc_match:
             candidate = loc_match.group(1).strip()
             candidate = re.sub(r"\b(today|now|currently|outside|right now|please|like|report|forecast)\b", "", candidate).strip()
@@ -351,9 +387,12 @@ def execute_skill(command: str) -> tuple[bool, str | None, str | None]:
             if clean_phrase:
                 city = clean_phrase
 
+
         ok, weather_msg, weather_url = get_live_weather(city)
         if ok:
             return True, weather_msg, weather_url
+        return True, f"Could not retrieve live weather for '{city}'. Please try again in a moment.", None
+
 
     # 5. Direct Wikipedia Knowledge Lookup
     # Avoid routing time, date, weather, or conversational prompts to Wikipedia
