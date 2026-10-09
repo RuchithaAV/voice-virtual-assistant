@@ -7,7 +7,8 @@ opened_urls = []
 def no_side_effects(monkeypatch):
     opened_urls.clear()
     monkeypatch.setattr(skills.webbrowser, "open", lambda url, new=0: opened_urls.append(url) or True)
-    monkeypatch.setattr(skills.os, "startfile", lambda url: opened_urls.append(url), raising=False)
+    if hasattr(skills, "os"):
+        monkeypatch.setattr(skills.os, "startfile", lambda url: opened_urls.append(url), raising=False)
     monkeypatch.setattr(skills.subprocess, "Popen", lambda *a, **k: None)
     monkeypatch.setattr(skills, "adjust_volume", lambda action, steps=5: f"volume {action}")
     monkeypatch.setattr(skills, "get_wikipedia_summary", lambda t: (True, f"wiki:{t}", None))

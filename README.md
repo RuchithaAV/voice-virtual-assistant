@@ -18,6 +18,7 @@ voice-virtual-assistant/
 |-- speech_to_text_test.py  # Standalone STT transcription test with noise reduction
 |-- microphone_test.py      # Microphone recording and playback hardware test
 |-- speech_test.py          # Standalone Text-to-Speech (TTS) test (pyttsx3)
+|-- pytest.ini              # Pytest configuration file
 |-- requirements.txt        # Project dependencies list
 |-- .env.example            # Environment variable template for optional Cloud API keys
 |-- README.md               # Project documentation
@@ -129,9 +130,9 @@ python main.py
 
 Run the automated pytest test suite:
 ```powershell
-python -m pytest tests -v
+pytest
 ```
-*(Note: Always pass `tests` to pytest. The `*_test.py` scripts in the project root directory are interactive manual hardware diagnostic checks, not automated pytest unit tests).*
+*(Or run with verbose output: `pytest -v` or `python -m pytest -v`. Note that the `*_test.py` scripts in the project root directory are interactive manual hardware diagnostic checks, not automated unit tests).*
 
 ### 4. Standalone Hardware Diagnostic Tests
 

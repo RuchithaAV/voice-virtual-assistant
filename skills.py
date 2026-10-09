@@ -1,10 +1,8 @@
 import ctypes
 import datetime
-import os
 import re
 import subprocess
 import urllib.parse
-from urllib.parse import urlparse
 import webbrowser
 import psutil
 import requests
@@ -268,7 +266,7 @@ def launch_url(url: str) -> bool:
     if any(char in url for char in (" ", '"', "&", "|", "<", ">", "^")):
         return False
 
-    parsed = urlparse(url)
+    parsed = urllib.parse.urlparse(url)
     if parsed.scheme not in ("http", "https") or not parsed.netloc:
         return False
 
