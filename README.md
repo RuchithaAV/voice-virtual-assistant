@@ -171,4 +171,3 @@ python main.py
 - [x] Add system automation skills (opening applications, browser searches, volume control).
 - [x] Add Hybrid Cloud AI option (Groq 70B and Google Gemini Flash support).
 - [x] Add deterministic real-time skills (Open-Meteo Weather, Wikipedia RAG summary, Date/Time, System Diagnostics).
-- [ ] Implement continuous listening / wake word activation (e.g., "Hey Assistant").
