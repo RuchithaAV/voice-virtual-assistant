@@ -53,11 +53,11 @@ def query_ollama(
 
 
 def get_available_groq_models(api_key: str | None = None) -> list[str]:
-    """Retrieves available model IDs from Groq API or returns supported defaults."""
+    """Retrieves available text chat model IDs from Groq API or returns supported defaults."""
     default_models = [
         "llama-3.1-8b-instant",
-        "llama-3.1-70b-versatile",
         "llama-3.3-70b-versatile",
+        "llama-3.1-70b-versatile",
         "llama3-70b-8192",
         "llama3-8b-8192",
         "gemma2-9b-it",
@@ -70,11 +70,17 @@ def get_available_groq_models(api_key: str | None = None) -> list[str]:
     try:
         client = Groq(api_key=key)
         models_data = client.models.list()
+        excluded_keywords = ("whisper", "guard", "canopylabs", "orpheus", "playai", "tts", "embedding", "vision", "specdec")
         active_models = [
             m.id for m in models_data.data 
-            if not m.id.startswith("whisper") and "guard" not in m.id
+            if not any(kw in m.id.lower() for kw in excluded_keywords)
         ]
         if active_models:
+            # Ensure fast standard chat models are prioritized at the top
+            for priority_model in ("llama-3.1-8b-instant", "llama-3.3-70b-versatile", "llama-3.1-70b-versatile"):
+                if priority_model in active_models:
+                    active_models.remove(priority_model)
+                    active_models.insert(0, priority_model)
             return active_models
     except Exception:
         pass
@@ -87,7 +93,7 @@ def query_groq(
     history: list[dict] | None = None,
     api_key: str | None = None,
 ) -> str:
-    """Queries Groq Cloud API for ultra-fast high-parameter LLM inference."""
+    """Queries Groq Cloud API for ultra-fast high-parameter LLM inference with automatic model fallback."""
     key = api_key or os.environ.get("GROQ_API_KEY")
     if not key:
         return "Groq API key missing. Please provide your API key in settings or set GROQ_API_KEY in .env."
@@ -101,17 +107,31 @@ def query_groq(
 
     messages.append({"role": "user", "content": prompt})
 
-    try:
-        client = Groq(api_key=key)
-        completion = client.chat.completions.create(
-            model=model_name,
-            messages=messages,
-            max_tokens=600,
-            temperature=0.6,
-        )
-        return completion.choices[0].message.content.strip()
-    except Exception as error:
-        return f"Groq Cloud error: {error}."
+    candidate_models = [model_name]
+    for fallback in ("llama-3.1-8b-instant", "llama-3.3-70b-versatile"):
+        if fallback not in candidate_models:
+            candidate_models.append(fallback)
+
+    client = Groq(api_key=key)
+    last_error = None
+    for candidate in candidate_models:
+        try:
+            completion = client.chat.completions.create(
+                model=candidate,
+                messages=messages,
+                max_tokens=600,
+                temperature=0.6,
+            )
+            return completion.choices[0].message.content.strip()
+        except Exception as error:
+            last_error = error
+            err_str = str(error)
+            # If terms required, model deprecated/not found, or overloaded, try standard fallback model
+            if any(x in err_str for x in ("model_terms_required", "terms acceptance", "404", "400", "503")):
+                continue
+            return f"Groq Cloud error: {error}."
+
+    return f"Groq Cloud error: {last_error}."
 
 
 
