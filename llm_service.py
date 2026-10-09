@@ -45,7 +45,7 @@ def query_ollama(
             model=model_name,
             messages=messages,
             think=False,
-            options={"num_ctx": 2048, "num_predict": 150},
+            options={"num_ctx": 2048, "num_predict": 600},
         )
         return response.message.content.strip()
     except Exception as error:
@@ -106,7 +106,7 @@ def query_groq(
         completion = client.chat.completions.create(
             model=model_name,
             messages=messages,
-            max_tokens=150,
+            max_tokens=600,
             temperature=0.6,
         )
         return completion.choices[0].message.content.strip()
