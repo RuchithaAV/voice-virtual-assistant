@@ -1,0 +1,165 @@
+import os
+from dotenv import load_dotenv
+import ollama
+from groq import Groq
+from google import genai
+
+# Load environment variables from .env if present
+load_dotenv()
+
+SYSTEM_PROMPT = (
+    "You are a helpful, intelligent voice assistant. "
+    "Answer briefly in plain language, using at most three sentences."
+)
+
+
+def get_available_ollama_models() -> tuple[bool, list[str]]:
+    """Checks if local Ollama is running and returns installed models."""
+    try:
+        client = ollama.Client(host="http://localhost:11434", timeout=3)
+        model_list = client.list()
+        models = [m.model for m in model_list.models]
+        return True, models
+    except Exception:
+        return False, []
+
+
+def query_ollama(
+    prompt: str,
+    model_name: str = "qwen3:1.7b",
+    history: list[dict] | None = None,
+) -> str:
+    """Queries local Ollama instance with conversation history."""
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+
+    if history:
+        for msg in history[-8:]:
+            if msg.get("role") in ("user", "assistant") and msg.get("content"):
+                messages.append({"role": msg["role"], "content": msg["content"]})
+
+    messages.append({"role": "user", "content": prompt})
+
+    try:
+        client = ollama.Client(host="http://localhost:11434", timeout=60)
+        response = client.chat(
+            model=model_name,
+            messages=messages,
+            think=False,
+            options={"num_ctx": 2048, "num_predict": 150},
+        )
+        return response.message.content.strip()
+    except Exception as error:
+        return f"Local Ollama error: {error}. Ensure Ollama is running locally."
+
+
+def get_available_groq_models(api_key: str | None = None) -> list[str]:
+    """Retrieves available model IDs from Groq API or returns supported defaults."""
+    default_models = [
+        "llama-3.1-8b-instant",
+        "llama-3.1-70b-versatile",
+        "llama-3.3-70b-versatile",
+        "llama3-70b-8192",
+        "llama3-8b-8192",
+        "gemma2-9b-it",
+        "mixtral-8x7b-32768",
+    ]
+    key = api_key or os.environ.get("GROQ_API_KEY")
+    if not key:
+        return default_models
+
+    try:
+        client = Groq(api_key=key)
+        models_data = client.models.list()
+        active_models = [
+            m.id for m in models_data.data 
+            if not m.id.startswith("whisper") and "guard" not in m.id
+        ]
+        if active_models:
+            return active_models
+    except Exception:
+        pass
+    return default_models
+
+
+def query_groq(
+    prompt: str,
+    model_name: str = "llama-3.1-8b-instant",
+    history: list[dict] | None = None,
+    api_key: str | None = None,
+) -> str:
+    """Queries Groq Cloud API for ultra-fast high-parameter LLM inference."""
+    key = api_key or os.environ.get("GROQ_API_KEY")
+    if not key:
+        return "Groq API key missing. Please provide your API key in settings or set GROQ_API_KEY in .env."
+
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+
+    if history:
+        for msg in history[-8:]:
+            if msg.get("role") in ("user", "assistant") and msg.get("content"):
+                messages.append({"role": msg["role"], "content": msg["content"]})
+
+    messages.append({"role": "user", "content": prompt})
+
+    try:
+        client = Groq(api_key=key)
+        completion = client.chat.completions.create(
+            model=model_name,
+            messages=messages,
+            max_tokens=150,
+            temperature=0.6,
+        )
+        return completion.choices[0].message.content.strip()
+    except Exception as error:
+        return f"Groq Cloud error: {error}."
+
+
+
+def query_gemini(
+    prompt: str,
+    model_name: str = "gemini-2.0-flash",
+    history: list[dict] | None = None,
+    api_key: str | None = None,
+) -> str:
+    """Queries Google Gemini API with system instructions and chat history."""
+    key = api_key or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+    if not key:
+        return "Gemini API key missing. Please provide your API key in settings or set GEMINI_API_KEY in .env."
+
+    try:
+        client = genai.Client(api_key=key)
+
+        # Format conversation context for Gemini
+        conversation_context = f"System Instruction: {SYSTEM_PROMPT}\n\n"
+        if history:
+            for msg in history[-6:]:
+                role = "User" if msg.get("role") == "user" else "Assistant"
+                conversation_context += f"{role}: {msg.get('content', '')}\n"
+
+        conversation_context += f"User: {prompt}\nAssistant:"
+
+        response = client.models.generate_content(
+            model=model_name,
+            contents=conversation_context,
+        )
+        return response.text.strip()
+    except Exception as error:
+        return f"Google Gemini error: {error}."
+
+
+def query_llm(
+    prompt: str,
+    provider: str = "Local (Ollama)",
+    model_name: str = "qwen3:1.7b",
+    history: list[dict] | None = None,
+    api_key: str | None = None,
+) -> str:
+    """
+    Unified router that directs prompts to Local Ollama, Groq Cloud, or Google Gemini.
+    """
+    if "Groq" in provider:
+        return query_groq(prompt, model_name=model_name, history=history, api_key=api_key)
+    elif "Gemini" in provider:
+        return query_gemini(prompt, model_name=model_name, history=history, api_key=api_key)
+    else:
+        return query_ollama(prompt, model_name=model_name, history=history)

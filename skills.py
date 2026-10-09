@@ -1,9 +1,12 @@
 import ctypes
+import datetime
 import os
 import re
 import subprocess
 import urllib.parse
 import webbrowser
+import psutil
+import requests
 
 # Windows Virtual-Key codes for volume control
 VK_VOLUME_MUTE = 0xAD
@@ -59,6 +62,29 @@ WEBSITE_MAPPINGS = {
     "stack overflow": "https://stackoverflow.com",
 }
 
+# Weather code descriptions from WMO
+WEATHER_CODES = {
+    0: "Clear sky",
+    1: "Mainly clear",
+    2: "Partly cloudy",
+    3: "Overcast",
+    45: "Foggy",
+    48: "Depositing rime fog",
+    51: "Light drizzle",
+    53: "Moderate drizzle",
+    55: "Dense drizzle",
+    61: "Slight rain",
+    63: "Moderate rain",
+    65: "Heavy rain",
+    71: "Slight snow fall",
+    73: "Moderate snow fall",
+    75: "Heavy snow fall",
+    80: "Slight rain showers",
+    81: "Moderate rain showers",
+    82: "Violent rain showers",
+    95: "Thunderstorm",
+}
+
 
 def _send_key_event(vk_code: int, times: int = 1) -> None:
     """Simulates pressing and releasing a virtual key in Windows."""
@@ -80,6 +106,112 @@ def adjust_volume(action: str, steps: int = 5) -> str:
         _send_key_event(VK_VOLUME_MUTE, 1)
         return "Toggled volume mute."
     return "Volume command not recognized."
+
+
+def get_current_time_date(request_type: str = "all") -> str:
+    """Returns the current formatted system time and date."""
+    now = datetime.datetime.now()
+    time_str = now.strftime("%I:%M %p")
+    date_str = now.strftime("%A, %B %d, %Y")
+
+    if request_type == "time":
+        return f"The current time is {time_str}."
+    elif request_type == "date":
+        return f"Today is {date_str}."
+    return f"It is {time_str} on {date_str}."
+
+
+def get_system_diagnostics() -> str:
+    """Returns current CPU, RAM, and Battery status."""
+    try:
+        cpu_percent = psutil.cpu_percent(interval=0.1)
+        ram = psutil.virtual_memory()
+        ram_percent = ram.percent
+
+        battery = psutil.sensors_battery()
+        if battery:
+            plugged = "plugged in" if battery.power_plugged else "on battery"
+            battery_info = f"Battery is at {battery.percent}% ({plugged})."
+        else:
+            battery_info = "Running on desktop AC power."
+
+        return (
+            f"{battery_info} "
+            f"CPU usage is {cpu_percent}%, and RAM usage is {ram_percent}%."
+        )
+    except Exception as error:
+        return f"Unable to fetch system metrics: {error}"
+
+
+def get_live_weather(city_query: str = "London") -> tuple[bool, str, str | None]:
+    """Fetches real-time weather information using Open-Meteo free API."""
+    city_clean = city_query.strip()
+    if not city_clean or city_clean.lower() in ("today", "now", "here", "outside", "current"):
+        city_clean = "London"  # Default fallback
+
+    try:
+        # Step 1: Geocoding
+        geo_url = (
+            f"https://geocoding-api.open-meteo.com/v1/search"
+            f"?name={urllib.parse.quote_plus(city_clean)}&count=1&language=en&format=json"
+        )
+        geo_resp = requests.get(geo_url, timeout=5).json()
+
+        if not geo_resp.get("results"):
+            return False, f"Could not find weather data for location '{city_clean}'.", None
+
+        result = geo_resp["results"][0]
+        lat = result["latitude"]
+        lon = result["longitude"]
+        city_name = result.get("name", city_clean)
+        country = result.get("country", "")
+
+        # Step 2: Forecast
+        weather_url = (
+            f"https://api.open-meteo.com/v1/forecast"
+            f"?latitude={lat}&longitude={lon}&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m"
+        )
+        weather_resp = requests.get(weather_url, timeout=5).json()
+        current = weather_resp.get("current", {})
+
+        temp = current.get("temperature_2m")
+        humidity = current.get("relative_humidity_2m")
+        wind = current.get("wind_speed_10m")
+        code = current.get("weather_code", 0)
+        condition = WEATHER_CODES.get(code, "Clear")
+
+        loc_label = f"{city_name}, {country}" if country else city_name
+        summary = (
+            f"The current weather in {loc_label} is {condition} with a temperature of {temp}°C, "
+            f"humidity of {humidity}%, and wind speed of {wind} km/h."
+        )
+        online_url = f"https://www.google.com/search?q=weather+{urllib.parse.quote_plus(city_name)}"
+        return True, summary, online_url
+    except Exception as error:
+        return False, f"Failed to retrieve weather data: {error}", None
+
+
+def get_wikipedia_summary(topic: str) -> tuple[bool, str, str | None]:
+    """Retrieves a direct encyclopedic summary from Wikipedia REST API."""
+    topic_clean = topic.strip().replace(" ", "_")
+    try:
+        url = f"https://en.wikipedia.org/api/rest_v1/page/summary/{urllib.parse.quote(topic_clean)}"
+        headers = {"User-Agent": "VoiceVirtualAssistant/1.0 (academic_project)"}
+        resp = requests.get(url, headers=headers, timeout=5)
+
+        if resp.status_code == 200:
+            data = resp.json()
+            extract = data.get("extract", "")
+            page_url = data.get("content_urls", {}).get("desktop", {}).get("page")
+            if extract:
+                # Trim extract to first 2 sentences for voice brevity
+                sentences = re.split(r"(?<=[.!?])\s+", extract)
+                concise_extract = " ".join(sentences[:2])
+                return True, concise_extract, page_url
+
+        return False, f"Could not find a Wikipedia summary for '{topic}'.", None
+    except Exception as error:
+        return False, f"Wikipedia lookup error: {error}", None
 
 
 def launch_url(url: str) -> bool:
@@ -171,15 +303,16 @@ def open_website(site_name: str) -> tuple[bool, str, str | None]:
 
 def execute_skill(command: str) -> tuple[bool, str | None, str | None]:
     """
-    Evaluates command against automation skills.
+    Evaluates command against automation and real-time knowledge skills.
     
     Returns:
         (is_handled: bool, response_message: str | None, opened_url: str | None)
     """
     text = command.strip().lower()
 
-    # Clean leading punctuation/fillers if any
+    # Clean leading/trailing punctuation/fillers if any
     text = re.sub(r"^[,\.\?\!\s]+", "", text)
+    text = re.sub(r"[,\.\?\!\s]+$", "", text)
 
     # 1. Volume Controls
     if any(phrase in text for phrase in ("volume up", "increase volume", "turn up volume", "raise volume", "increase sound")):
@@ -191,7 +324,58 @@ def execute_skill(command: str) -> tuple[bool, str | None, str | None]:
     if any(phrase in text for phrase in ("mute volume", "mute audio", "unmute volume", "unmute audio", "mute sound", "unmute sound")) or text in ("mute", "unmute"):
         return True, adjust_volume("mute"), None
 
-    # 2. YouTube Search & Play Commands
+    # 2. Time & Date
+    if any(phrase in text for phrase in ("what time is it", "current time", "tell me the time", "what is the time")):
+        return True, get_current_time_date("time"), None
+
+    if any(phrase in text for phrase in ("what is the date", "today's date", "what day is today", "what is today's date", "what's the date")):
+        return True, get_current_time_date("date"), None
+
+    # 3. System Diagnostics & Battery
+    if any(phrase in text for phrase in ("battery status", "battery level", "battery percentage", "cpu usage", "ram usage", "system status", "system health", "system diagnostics")):
+        return True, get_system_diagnostics(), None
+
+    # 4. Live Weather
+    if "weather" in text or "temperature" in text:
+        city = "London"
+        loc_match = re.search(r"(?:in|for|at|of)\s+([a-zA-Z\s]+)", text)
+        if loc_match:
+            candidate = loc_match.group(1).strip()
+            # Strip temporal or filler words from candidate city
+            candidate = re.sub(r"\b(today|now|currently|outside|right now|please|like|report|forecast)\b", "", candidate).strip()
+            if candidate:
+                city = candidate
+        else:
+            # Check general phrasing
+            clean_phrase = re.sub(r"\b(what|what's|is|the|weather|temperature|now|today|currently|report|how)\b", "", text).strip()
+            if clean_phrase:
+                city = clean_phrase
+
+        ok, weather_msg, weather_url = get_live_weather(city)
+        if ok:
+            return True, weather_msg, weather_url
+
+
+    # 5. Direct Wikipedia Knowledge Lookup
+    for pattern in (
+        r"who is (.+)",
+        r"who was (.+)",
+        r"what is (.+)",
+        r"what was (.+)",
+        r"tell me about (.+)",
+        r"define (.+)",
+        r"explain (.+)",
+    ):
+        match = re.match(pattern, text)
+        if match:
+            topic = match.group(1).strip()
+            # If the question is simple conversational or automation, skip wikipedia
+            if topic not in ("your name", "the time", "the date", "the weather", "my name", "you"):
+                ok, wiki_msg, wiki_url = get_wikipedia_summary(topic)
+                if ok:
+                    return True, wiki_msg, wiki_url
+
+    # 6. YouTube Search & Play Commands
     if "youtube" in text or " on yt" in text or text.startswith("yt "):
         for pattern in (
             r"search youtube for (.+)",
@@ -211,7 +395,7 @@ def execute_skill(command: str) -> tuple[bool, str | None, str | None]:
                     msg, url = perform_web_search(query, platform="youtube")
                     return True, msg, url
 
-    # 3. Google & General Web Searches
+    # 7. Google & General Web Searches
     for pattern in (
         r"search google for (.+)",
         r"search for (.+) on google",
@@ -227,7 +411,7 @@ def execute_skill(command: str) -> tuple[bool, str | None, str | None]:
                 msg, url = perform_web_search(query, platform="google")
                 return True, msg, url
 
-    # 4. Direct Website Opening
+    # 8. Direct Website & Application Opening
     for prefix in ("open ", "go to ", "visit ", "launch "):
         if text.startswith(prefix):
             target = text[len(prefix):].strip()
@@ -239,12 +423,13 @@ def execute_skill(command: str) -> tuple[bool, str | None, str | None]:
             if is_app:
                 return True, app_resp, None
 
-    # 5. Direct single-word website aliases (e.g. "youtube", "yt", "github")
+    # 9. Direct single-word website aliases (e.g. "youtube", "yt", "github")
     if text in WEBSITE_MAPPINGS:
         is_site, site_resp, target_url = open_website(text)
         return True, site_resp, target_url
 
     # Not an automation skill command
     return False, None, None
+
 
 

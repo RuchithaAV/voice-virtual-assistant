@@ -1,11 +1,16 @@
-import win32com.client
+import os
 from datetime import datetime
+from dotenv import load_dotenv
 import numpy as np
 import noisereduce as nr
-from ollama import Client
-from skills import execute_skill
 import sounddevice as sd
 import speech_recognition as sr
+import win32com.client
+from skills import execute_skill
+from llm_service import query_llm
+
+# Load .env file if present
+load_dotenv()
 
 # Audio configuration
 SAMPLE_RATE = 16000
@@ -17,22 +22,8 @@ speaker = win32com.client.Dispatch("SAPI.SpVoice")
 recognizer = sr.Recognizer()
 recognizer.operation_timeout = 15
 
-# Initialize local Ollama client
-ollama_client = Client(host="http://localhost:11434", timeout=60)
-MODEL_NAME = "qwen3:1.7b"
-
-# System prompt for concise voice responses
-SYSTEM_PROMPT = {
-    "role": "system",
-    "content": (
-        "You are a helpful voice assistant. "
-        "Answer briefly in plain language, using at most three sentences."
-    ),
-}
-
 # Persistent multi-turn conversation memory
 conversation_history: list[dict] = []
-MAX_HISTORY_MESSAGES = 8  # Keeps last 4 user-assistant exchanges
 
 
 def respond(message: str) -> None:
@@ -42,30 +33,32 @@ def respond(message: str) -> None:
 
 
 def ask_llm(prompt: str) -> str:
-    """Queries Ollama with full multi-turn conversation history."""
+    """Queries Hybrid LLM (Groq / Gemini / Local Ollama) with multi-turn memory."""
     global conversation_history
 
-    # Append current user question to history
+    # Auto-detect cloud keys or fallback to local Ollama
+    if os.environ.get("GROQ_API_KEY"):
+        provider = "Cloud (Groq)"
+        model_name = "llama-3.3-70b-versatile"
+    elif os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY"):
+        provider = "Cloud (Google Gemini)"
+        model_name = "gemini-2.0-flash"
+    else:
+        provider = "Local (Ollama)"
+        model_name = "qwen3:1.7b"
+
+    answer = query_llm(
+        prompt=prompt,
+        provider=provider,
+        model_name=model_name,
+        history=conversation_history,
+    )
+
+    # Append to memory
     conversation_history.append({"role": "user", "content": prompt})
+    conversation_history.append({"role": "assistant", "content": answer})
+    return answer
 
-    # Keep only the most recent N messages to avoid context overflow
-    trimmed_history = conversation_history[-MAX_HISTORY_MESSAGES:]
-
-    try:
-        response = ollama_client.chat(
-            model=MODEL_NAME,
-            messages=[SYSTEM_PROMPT] + trimmed_history,
-            think=False,
-            options={"num_ctx": 2048, "num_predict": 150},
-        )
-        answer = response.message.content.strip()
-
-        # Append assistant response to history
-        conversation_history.append({"role": "assistant", "content": answer})
-        return answer
-    except Exception as error:
-        print(f"LLM generation failed: {error}")
-        return "Sorry, I had trouble generating a response."
 
 
 def handle_command(command: str) -> bool:

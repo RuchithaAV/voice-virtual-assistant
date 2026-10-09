@@ -1,11 +1,12 @@
 import io
+import os
 from time import perf_counter
 from datetime import datetime
 from gtts import gTTS
-import ollama
-from skills import execute_skill
 import speech_recognition as sr
 import streamlit as st
+from skills import execute_skill
+from llm_service import query_llm, get_available_ollama_models
 
 # Page Configuration
 st.set_page_config(
@@ -33,7 +34,7 @@ st.markdown(
         border-radius: 9999px;
         font-size: 0.85rem;
         font-weight: 600;
-        margin-bottom: 1rem;
+        margin-bottom: 0.5rem;
     }
     .status-online {
         background-color: rgba(34, 197, 94, 0.15);
@@ -63,23 +64,12 @@ if "messages" not in st.session_state:
             "content": "Hello! I am your AI voice assistant. Speak into the microphone or type below.",
             "audio": None,
             "latency": None,
+            "url": None,
         }
     ]
 
 if "last_processed_audio" not in st.session_state:
     st.session_state.last_processed_audio = None
-
-
-# Helper: Check Ollama Connection & Available Models
-@st.cache_data(ttl=10)
-def check_ollama() -> tuple[bool, list[str]]:
-    try:
-        client = ollama.Client(host="http://localhost:11434", timeout=3)
-        model_list = client.list()
-        models = [m.model for m in model_list.models]
-        return True, models
-    except Exception:
-        return False, []
 
 
 # Helper: Transcribe Audio Bytes using SpeechRecognition
@@ -110,41 +100,14 @@ def generate_speech(text: str) -> bytes | None:
         return None
 
 
-# Helper: Query Local Ollama LLM with multi-turn history
-def query_ollama(prompt: str, model_name: str, history: list[dict] | None = None) -> str:
-    messages = [
-        {
-            "role": "system",
-            "content": (
-                "You are a helpful voice assistant. "
-                "Answer briefly in plain language, using at most three sentences."
-            ),
-        }
-    ]
-
-    # Include the last 8 conversation turns from history
-    if history:
-        for msg in history[-8:]:
-            if msg.get("role") in ("user", "assistant") and msg.get("content"):
-                messages.append({"role": msg["role"], "content": msg["content"]})
-
-    messages.append({"role": "user", "content": prompt})
-
-    try:
-        client = ollama.Client(host="http://localhost:11434", timeout=60)
-        response = client.chat(
-            model=model_name,
-            messages=messages,
-            think=False,
-            options={"num_ctx": 2048, "num_predict": 150},
-        )
-        return response.message.content.strip()
-    except Exception as error:
-        return f"Sorry, I had trouble generating a response from the local AI model ({error})."
-
-
 # Helper: Route command, execute system skills, or send to LLM
-def process_command(user_query: str, model_name: str, history: list[dict] | None = None) -> tuple[str, str | None]:
+def process_command(
+    user_query: str,
+    provider: str,
+    model_name: str,
+    history: list[dict] | None = None,
+    api_key: str | None = None,
+) -> tuple[str, str | None]:
     cleaned = user_query.strip().lower()
 
     if cleaned in ("exit", "quit", "bye", "stop"):
@@ -160,40 +123,90 @@ def process_command(user_query: str, model_name: str, history: list[dict] | None
     if skill_handled and skill_response:
         return skill_response, target_url
 
-    # Fallback to local Ollama LLM with multi-turn memory
-    return query_ollama(user_query, model_name, history=history), None
+    # Fallback to selected LLM provider (Local Ollama, Groq, or Gemini)
+    response_text = query_llm(
+        prompt=user_query,
+        provider=provider,
+        model_name=model_name,
+        history=history,
+        api_key=api_key,
+    )
+    return response_text, None
 
 
-# --- Sidebar ---
+# --- Sidebar: Settings & Provider Switching ---
 with st.sidebar:
-    st.header("Settings & Diagnostics")
+    st.header("AI Brain & Settings")
 
-    ollama_ok, available_models = check_ollama()
+    # 1. Select AI Provider
+    ai_provider = st.radio(
+        "Select AI Provider",
+        options=["Local (Ollama)", "Cloud (Groq)", "Cloud (Google Gemini)"],
+        index=0,
+    )
 
-    if ollama_ok:
-        st.markdown(
-            '<div class="status-badge status-online">Ollama: Online</div>',
-            unsafe_allow_html=True,
-        )
-        if available_models:
-            default_index = 0
-            if "qwen3:1.7b" in available_models:
-                default_index = available_models.index("qwen3:1.7b")
-            selected_model = st.selectbox(
-                "Active LLM Model",
-                options=available_models,
-                index=default_index,
+    api_key_input = None
+
+    if ai_provider == "Local (Ollama)":
+        ollama_ok, available_models = get_available_ollama_models()
+        if ollama_ok:
+            st.markdown(
+                '<div class="status-badge status-online">Local Ollama: Online</div>',
+                unsafe_allow_html=True,
             )
+            if available_models:
+                default_idx = available_models.index("qwen3:1.7b") if "qwen3:1.7b" in available_models else 0
+                selected_model = st.selectbox("Local Model", options=available_models, index=default_idx)
+            else:
+                selected_model = "qwen3:1.7b"
+                st.warning("No models found. Run `ollama run qwen3:1.7b`")
         else:
+            st.markdown(
+                '<div class="status-badge status-offline">Local Ollama: Offline</div>',
+                unsafe_allow_html=True,
+            )
+            st.error("Ollama server not detected. Start Ollama or switch to Cloud above.")
             selected_model = "qwen3:1.7b"
-            st.warning("No models found in Ollama. Run: `ollama run qwen3:1.7b`")
-    else:
+
+    elif ai_provider == "Cloud (Groq)":
         st.markdown(
-            '<div class="status-badge status-offline">Ollama: Offline</div>',
+            '<div class="status-badge status-online">Cloud Groq: Ultra-Fast 70B</div>',
             unsafe_allow_html=True,
         )
-        st.error("Ollama is not running locally at http://localhost:11434.")
-        selected_model = "qwen3:1.7b"
+        selected_model = st.selectbox(
+            "Groq Model",
+            options=["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768"],
+            index=0,
+        )
+        api_key_input = st.text_input(
+            "Groq API Key",
+            type="password",
+            value=os.environ.get("GROQ_API_KEY", ""),
+            placeholder="gsk_...",
+            help="Get free key at console.groq.com",
+        )
+        if not api_key_input:
+            st.info("Paste your free Groq API key above (from [console.groq.com](https://console.groq.com/keys)).")
+
+    else:  # Google Gemini
+        st.markdown(
+            '<div class="status-badge status-online">Google Gemini: Multimodal</div>',
+            unsafe_allow_html=True,
+        )
+        selected_model = st.selectbox(
+            "Gemini Model",
+            options=["gemini-2.0-flash", "gemini-1.5-flash"],
+            index=0,
+        )
+        api_key_input = st.text_input(
+            "Gemini API Key",
+            type="password",
+            value=os.environ.get("GEMINI_API_KEY", "") or os.environ.get("GOOGLE_API_KEY", ""),
+            placeholder="AIzaSy...",
+            help="Get free key at aistudio.google.com",
+        )
+        if not api_key_input:
+            st.info("Paste your free Gemini key above (from [aistudio.google.com](https://aistudio.google.com/app/apikey)).")
 
     enable_voice_reply = st.toggle("Voice Audio Output", value=True)
 
@@ -215,18 +228,17 @@ with st.sidebar:
     st.markdown("---")
     st.markdown(
         """
-        **Pipeline:**
-        1. Voice recorded in browser via `st.audio_input`.
-        2. Transcribed via Google Speech Recognition.
-        3. Local Ollama LLM (`qwen3:1.7b`) generates response.
-        4. Audio synthesized with `gTTS` and played back.
+        **Hybrid Architecture:**
+        - **Local Ollama**: 100% private, offline 2B model.
+        - **Cloud Groq**: 70B parameter model with near-instant inference (<0.4s).
+        - **Google Gemini**: Deep reasoning with latest web knowledge.
         """
     )
 
 
 # --- Main Application Area ---
 st.markdown('<div class="main-title">Voice Virtual Assistant</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-title">Powered by Streamlit, SpeechRecognition, and Local Ollama</div>', unsafe_allow_html=True)
+st.markdown(f'<div class="sub-title">Running with <strong>{ai_provider}</strong> ({selected_model})</div>', unsafe_allow_html=True)
 
 col_chat, col_audio = st.columns([2.5, 1.2], gap="large")
 
@@ -236,7 +248,7 @@ with col_audio:
     audio_data = st.audio_input("Record Voice Command", label_visibility="collapsed")
 
 with col_chat:
-    # Render Conversation
+    # Render Conversation History
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]):
             st.write(msg["content"])
@@ -265,7 +277,11 @@ with col_chat:
                     start_time = perf_counter()
                     with st.spinner("Thinking..."):
                         assistant_response, target_url = process_command(
-                            transcribed_text, selected_model, history=st.session_state.messages[:-1]
+                            user_query=transcribed_text,
+                            provider=ai_provider,
+                            model_name=selected_model,
+                            history=st.session_state.messages[:-1],
+                            api_key=api_key_input,
                         )
 
                     audio_response_bytes = None
@@ -304,7 +320,11 @@ with col_chat:
             start_time = perf_counter()
             with st.spinner("Thinking..."):
                 assistant_response, target_url = process_command(
-                    user_text_input, selected_model, history=st.session_state.messages[:-1]
+                    user_query=user_text_input,
+                    provider=ai_provider,
+                    model_name=selected_model,
+                    history=st.session_state.messages[:-1],
+                    api_key=api_key_input,
                 )
 
             audio_response_bytes = None
@@ -329,5 +349,6 @@ with col_chat:
                 "url": target_url,
             }
         )
+
 
 

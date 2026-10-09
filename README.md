@@ -1,6 +1,6 @@
 # Voice Virtual Assistant
 
-A modular Python-based voice and text virtual assistant project built step-by-step for learning, experimentation, local AI integration, system automation, and interactive web visualization.
+A modular Python-based voice and text virtual assistant project built step-by-step for learning, experimentation, local AI integration, cloud LLM scaling, system automation, and interactive web visualization.
 
 ---
 
@@ -9,12 +9,14 @@ A modular Python-based voice and text virtual assistant project built step-by-st
 ```text
 voice-virtual-assistant/
 |-- app.py                  # Interactive Streamlit Web UI (voice recording, multi-turn chat, audio playback)
-|-- main.py                 # Terminal voice assistant with noise reduction, STT, multi-turn Ollama LLM, and TTS
+|-- main.py                 # Terminal voice assistant with noise reduction, STT, hybrid LLM, and TTS
+|-- llm_service.py          # Unified AI router (Local Ollama, Cloud Groq, Google Gemini)
 |-- skills.py               # System automation skills engine (apps, web search, volume control)
 |-- llm_test.py             # Standalone local LLM response generation test (Ollama)
 |-- speech_to_text_test.py  # Standalone STT transcription test with noise reduction
 |-- microphone_test.py      # Microphone recording and playback hardware test
 |-- speech_test.py          # Standalone Text-to-Speech (TTS) test (pyttsx3)
+|-- .env.example            # Environment variable template for optional Cloud API keys
 |-- README.md               # Project documentation
 `-- .venv/                  # Python virtual environment (git-ignored)
 ```
@@ -28,27 +30,33 @@ The voice assistant executes the following pipeline:
 1. **Audio Capture**: Captures voice through microphone hardware (`sounddevice` in terminal or `st.audio_input` in browser).
 2. **Noise Reduction & Preprocessing**: Cleans the input signal using `noisereduce` against an ambient baseline.
 3. **Speech-to-Text (STT)**: Converts audio into text with the Google Speech Recognition API (`speech_recognition`).
-4. **Skills & LLM Dispatching**:
+4. **Skills & Hybrid AI Dispatching**:
    - **System Automation Skills (`skills.py`)**: Intercepts commands for launching applications, web searches, and volume adjustments.
    - **Built-in Assistant Commands**: Handles greetings, time checks, memory reset, and exit.
-   - **Local AI Fallback (`ollama`)**: Routes general questions and contextual follow-ups to `qwen3:1.7b` with sliding-window multi-turn memory.
+   - **Hybrid LLM Router (`llm_service.py`)**:
+     - **Local Mode (Ollama)**: 100% offline & private (`qwen3:1.7b`).
+     - **Cloud Mode (Groq)**: Near-instant inference using 70B parameter model (`llama-3.3-70b-versatile`).
+     - **Cloud Mode (Google Gemini)**: Deep reasoning and fresh knowledge (`gemini-2.0-flash`).
 5. **Text-to-Speech Output**: Speaks the response aloud using the Windows SAPI voice engine (`win32com.client`) or browser audio streaming (`gTTS`).
 
 ---
 
 ## Features Implemented
 
+- **Hybrid AI Brain (Local + Cloud)**:
+  - **Local Ollama**: 100% offline and private.
+  - **Groq Cloud**: High-speed reasoning powered by Llama 3.3 70B (<0.4s response time).
+  - **Google Gemini**: Deep explanations and factual accuracy via Gemini Flash.
 - **System Automation Skills (`skills.py`)**:
   - **Desktop Application Launcher**: Opens apps like Notepad, Calculator, VS Code, Chrome, Edge, File Explorer, Task Manager, Paint, and Spotify.
   - **Web & Video Search**: Performs Google and YouTube searches directly in the default browser.
   - **Direct Website Navigation**: Instantly opens YouTube, Google, GitHub, Wikipedia, Reddit, and ChatGPT.
   - **Hardware Volume Control**: Adjusts system volume up/down and toggles mute via Windows virtual-key events.
 - **Multi-Turn Conversation Memory**: Retains conversation history so users can ask contextual follow-up questions.
-- **Streamlit Web Interface (`app.py`)**: Full visual dashboard with browser microphone input, chat history, live latency tracking, Ollama status/model selector, and in-browser audio playback.
+- **Streamlit Web Interface (`app.py`)**: Full visual dashboard with browser microphone input, chat history, live latency tracking, provider/model selector, API key input, and in-browser audio playback.
 - **Terminal Voice-Driven Loop (`main.py`)**: Hands-free command loop with background noise calibration and real-time TTS.
 - **Ambient Noise Calibration & Reduction**: Background noise subtraction ensures high transcription accuracy in everyday environments.
 - **Speech Recognition (STT)**: Robust transcription with automatic error handling for speech timeouts or background noise.
-- **Local AI Intelligence (LLM)**: Offline, private conversational AI powered by Ollama (`qwen3:1.7b`).
 
 ---
 
@@ -58,10 +66,8 @@ The voice assistant executes the following pipeline:
 - Python 3.10+ (tested with Python 3.13)
 - Windows OS (for native Windows SAPI TTS and volume control)
 - Working microphone and audio output device
-- Ollama installed and running locally with the target model:
-  ```powershell
-  ollama run qwen3:1.7b
-  ```
+- *(Optional for Local AI)*: Ollama installed and running with `ollama run qwen3:1.7b`
+- *(Optional for Cloud AI)*: Free API key from [Groq](https://console.groq.com/keys) or [Google AI Studio](https://aistudio.google.com/app/apikey)
 
 ### 2. Virtual Environment Setup
 
@@ -75,8 +81,23 @@ python -m venv .venv
 Install required dependencies:
 
 ```powershell
-pip install sounddevice SpeechRecognition pywin32 pyttsx3 numpy noisereduce ollama streamlit gTTS
+pip install sounddevice SpeechRecognition pywin32 pyttsx3 numpy noisereduce ollama streamlit gTTS groq google-genai python-dotenv psutil requests
 ```
+
+### 3. Optional: Configure Cloud API Keys
+
+Copy the template file to `.env` and paste your free API key:
+
+```powershell
+copy .env.example .env
+```
+
+Edit `.env`:
+```ini
+GROQ_API_KEY=gsk_your_groq_key_here
+GEMINI_API_KEY=AIzaSy_your_gemini_key_here
+```
+*(Or simply paste the key into the Streamlit sidebar at runtime).*
 
 ---
 
@@ -119,18 +140,21 @@ python main.py
 
 ## Commands Supported
 
-### 1. System Automation Skills
-- **Applications**: *"open notepad"*, *"open calculator"*, *"open chrome"*, *"open vs code"*, *"open file explorer"*, *"open task manager"*, *"open paint"*
-- **Web & Video Searches**: *"search google for machine learning"*, *"search youtube for lo-fi music"*, *"play bohemian rhapsody on youtube"*
-- **Websites**: *"open youtube"*, *"open github"*, *"open wikipedia"*, *"open reddit"*
-- **Volume**: *"volume up"*, *"volume down"*, *"mute volume"*, *"unmute"*
+### 1. System Automation & Real-Time Skills
+- **Live Weather**: *"what is the weather in London"*, *"weather in Tokyo"*, *"temperature in Paris"* (Powered by Open-Meteo API with zero API key requirement)
+- **Encyclopedic Knowledge (Wikipedia RAG)**: *"who is Isaac Newton"*, *"who was Marie Curie"*, *"what is quantum computing"*, *"tell me about artificial intelligence"*
+- **Date and Time**: *"what time is it"*, *"what is today's date"*, *"what day is today"*
+- **System Health & Battery**: *"battery status"*, *"battery level"*, *"cpu usage"*, *"system diagnostics"*
+- **Desktop Applications**: *"open notepad"*, *"open calculator"*, *"open chrome"*, *"open vs code"*, *"open file explorer"*, *"open task manager"*, *"open paint"*, *"open spotify"*
+- **Web and Video Searches**: *"search google for machine learning"*, *"search youtube for lo-fi music"*, *"play bohemian rhapsody on youtube"*
+- **Direct Website Navigation**: *"open youtube"*, *"open github"*, *"open wikipedia"*, *"open reddit"*, *"open chatgpt"*
+- **Hardware Volume**: *"volume up"*, *"volume down"*, *"mute volume"*, *"unmute"*
 
-### 2. Assistant Commands
+### 2. Built-in Assistant Commands
 - **Greetings**: `hello`, `hi`, `hey`
-- **Time**: `time`, `what time is it`
 - **Memory**: `clear memory`, `forget conversation`, `reset`
 - **Exit**: `exit`, `quit`, `stop`, `bye`
-- **General AI Q&A**: Any open-ended question answered by the local Ollama LLM with context memory.
+- **General AI Reasoning**: Any open-ended question answered by the active Local or Cloud LLM with multi-turn memory.
 
 ---
 
@@ -140,8 +164,6 @@ python main.py
 - [x] Build an interactive Streamlit web interface with microphone recording and audio playback.
 - [x] Implement multi-turn conversation memory and contextual follow-up understanding.
 - [x] Add system automation skills (opening applications, browser searches, volume control).
+- [x] Add Hybrid Cloud AI option (Groq 70B and Google Gemini Flash support).
+- [x] Add deterministic real-time skills (Open-Meteo Weather, Wikipedia RAG summary, Date/Time, System Diagnostics).
 - [ ] Implement continuous listening / wake word activation (e.g., "Hey Assistant").
-- [ ] Add live weather and news API integrations.
-
-
-
