@@ -115,9 +115,41 @@ def query_groq(
 
 
 
+def get_available_gemini_models(api_key: str | None = None) -> list[str]:
+    """Retrieves available model IDs from Gemini API or returns supported defaults."""
+    default_models = [
+        "gemini-3.8-flash",
+        "gemini-flash-latest",
+        "gemini-pro-latest",
+        "gemini-2.5-flash-lite",
+    ]
+    key = api_key or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+    if not key:
+        return default_models
+
+    try:
+        client = genai.Client(api_key=key)
+        models_data = list(client.models.list())
+        active = []
+        for m in models_data:
+            clean_name = m.name.replace("models/", "") if hasattr(m, "name") else str(m)
+            if "flash" in clean_name or "pro" in clean_name:
+                if not any(x in clean_name for x in ("preview-tts", "imagen", "embedding", "aqa", "experimental")):
+                    active.append(clean_name)
+        if active:
+            # Ensure 3.8-flash is at the top if present
+            if "gemini-3.8-flash" in active:
+                active.remove("gemini-3.8-flash")
+                active.insert(0, "gemini-3.8-flash")
+            return active
+    except Exception:
+        pass
+    return default_models
+
+
 def query_gemini(
     prompt: str,
-    model_name: str = "gemini-2.0-flash",
+    model_name: str = "gemini-3.8-flash",
     history: list[dict] | None = None,
     api_key: str | None = None,
 ) -> str:

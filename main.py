@@ -39,10 +39,10 @@ def ask_llm(prompt: str) -> str:
     # Auto-detect cloud keys or fallback to local Ollama
     if os.environ.get("GROQ_API_KEY"):
         provider = "Cloud (Groq)"
-        model_name = "llama-3.3-70b-versatile"
+        model_name = "llama-3.1-8b-instant"
     elif os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY"):
         provider = "Cloud (Google Gemini)"
-        model_name = "gemini-2.0-flash"
+        model_name = "gemini-3.8-flash"
     else:
         provider = "Local (Ollama)"
         model_name = "qwen3:1.7b"

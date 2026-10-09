@@ -147,15 +147,16 @@ def get_live_weather(city_query: str = "London") -> tuple[bool, str, str | None]
     """Fetches real-time weather information using Open-Meteo free API."""
     city_clean = city_query.strip()
     if not city_clean or city_clean.lower() in ("today", "now", "here", "outside", "current"):
-        city_clean = "London"  # Default fallback
+        city_clean = "London"
 
+    headers = {"User-Agent": "VoiceVirtualAssistant/1.0"}
     try:
         # Step 1: Geocoding
         geo_url = (
             f"https://geocoding-api.open-meteo.com/v1/search"
             f"?name={urllib.parse.quote_plus(city_clean)}&count=1&language=en&format=json"
         )
-        geo_resp = requests.get(geo_url, timeout=5).json()
+        geo_resp = requests.get(geo_url, headers=headers, timeout=8).json()
 
         if not geo_resp.get("results"):
             return False, f"Could not find weather data for location '{city_clean}'.", None
@@ -171,7 +172,7 @@ def get_live_weather(city_query: str = "London") -> tuple[bool, str, str | None]
             f"https://api.open-meteo.com/v1/forecast"
             f"?latitude={lat}&longitude={lon}&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m"
         )
-        weather_resp = requests.get(weather_url, timeout=5).json()
+        weather_resp = requests.get(weather_url, headers=headers, timeout=8).json()
         current = weather_resp.get("current", {})
 
         temp = current.get("temperature_2m")
@@ -189,6 +190,7 @@ def get_live_weather(city_query: str = "London") -> tuple[bool, str, str | None]
         return True, summary, online_url
     except Exception as error:
         return False, f"Failed to retrieve weather data: {error}", None
+
 
 
 def get_wikipedia_summary(topic: str) -> tuple[bool, str, str | None]:
@@ -341,12 +343,10 @@ def execute_skill(command: str) -> tuple[bool, str | None, str | None]:
         loc_match = re.search(r"(?:in|for|at|of)\s+([a-zA-Z\s]+)", text)
         if loc_match:
             candidate = loc_match.group(1).strip()
-            # Strip temporal or filler words from candidate city
             candidate = re.sub(r"\b(today|now|currently|outside|right now|please|like|report|forecast)\b", "", candidate).strip()
             if candidate:
                 city = candidate
         else:
-            # Check general phrasing
             clean_phrase = re.sub(r"\b(what|what's|is|the|weather|temperature|now|today|currently|report|how)\b", "", text).strip()
             if clean_phrase:
                 city = clean_phrase
@@ -355,25 +355,26 @@ def execute_skill(command: str) -> tuple[bool, str | None, str | None]:
         if ok:
             return True, weather_msg, weather_url
 
-
     # 5. Direct Wikipedia Knowledge Lookup
-    for pattern in (
-        r"who is (.+)",
-        r"who was (.+)",
-        r"what is (.+)",
-        r"what was (.+)",
-        r"tell me about (.+)",
-        r"define (.+)",
-        r"explain (.+)",
-    ):
-        match = re.match(pattern, text)
-        if match:
-            topic = match.group(1).strip()
-            # If the question is simple conversational or automation, skip wikipedia
-            if topic not in ("your name", "the time", "the date", "the weather", "my name", "you"):
-                ok, wiki_msg, wiki_url = get_wikipedia_summary(topic)
-                if ok:
-                    return True, wiki_msg, wiki_url
+    # Avoid routing time, date, weather, or conversational prompts to Wikipedia
+    if not any(k in text for k in ("weather", "temperature", "time", "date", "battery", "cpu", "ram", "volume", "open ", "play ")):
+        for pattern in (
+            r"^who is (.+)",
+            r"^who was (.+)",
+            r"^what is (.+)",
+            r"^what was (.+)",
+            r"^tell me about (.+)",
+            r"^define (.+)",
+            r"^explain (.+)",
+        ):
+            match = re.match(pattern, text)
+            if match:
+                topic = match.group(1).strip()
+                if topic not in ("your name", "my name", "you", "this", "that", "it"):
+                    ok, wiki_msg, wiki_url = get_wikipedia_summary(topic)
+                    if ok:
+                        return True, wiki_msg, wiki_url
+
 
     # 6. YouTube Search & Play Commands
     if "youtube" in text or " on yt" in text or text.startswith("yt "):

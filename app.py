@@ -6,7 +6,12 @@ from gtts import gTTS
 import speech_recognition as sr
 import streamlit as st
 from skills import execute_skill
-from llm_service import query_llm, get_available_ollama_models
+from llm_service import (
+    query_llm,
+    get_available_ollama_models,
+    get_available_groq_models,
+    get_available_gemini_models,
+)
 
 # Page Configuration
 st.set_page_config(
@@ -170,13 +175,8 @@ with st.sidebar:
 
     elif ai_provider == "Cloud (Groq)":
         st.markdown(
-            '<div class="status-badge status-online">Cloud Groq: Ultra-Fast 70B</div>',
+            '<div class="status-badge status-online">Cloud Groq: Ultra-Fast Inference</div>',
             unsafe_allow_html=True,
-        )
-        selected_model = st.selectbox(
-            "Groq Model",
-            options=["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768"],
-            index=0,
         )
         api_key_input = st.text_input(
             "Groq API Key",
@@ -185,28 +185,39 @@ with st.sidebar:
             placeholder="gsk_...",
             help="Get free key at console.groq.com",
         )
+        groq_options = get_available_groq_models(api_key_input)
+        default_idx = groq_options.index("llama-3.1-8b-instant") if "llama-3.1-8b-instant" in groq_options else 0
+        selected_model = st.selectbox(
+            "Groq Model",
+            options=groq_options,
+            index=default_idx,
+        )
         if not api_key_input:
             st.info("Paste your free Groq API key above (from [console.groq.com](https://console.groq.com/keys)).")
 
+
     else:  # Google Gemini
         st.markdown(
-            '<div class="status-badge status-online">Google Gemini: Multimodal</div>',
+            '<div class="status-badge status-online">Google Gemini: Multimodal Intelligence</div>',
             unsafe_allow_html=True,
-        )
-        selected_model = st.selectbox(
-            "Gemini Model",
-            options=["gemini-2.0-flash", "gemini-1.5-flash"],
-            index=0,
         )
         api_key_input = st.text_input(
             "Gemini API Key",
             type="password",
             value=os.environ.get("GEMINI_API_KEY", "") or os.environ.get("GOOGLE_API_KEY", ""),
-            placeholder="AIzaSy...",
+            placeholder="AIzaSy... or AQ....",
             help="Get free key at aistudio.google.com",
+        )
+        gemini_options = get_available_gemini_models(api_key_input)
+        default_idx = gemini_options.index("gemini-3.8-flash") if "gemini-3.8-flash" in gemini_options else 0
+        selected_model = st.selectbox(
+            "Gemini Model",
+            options=gemini_options,
+            index=default_idx,
         )
         if not api_key_input:
             st.info("Paste your free Gemini key above (from [aistudio.google.com](https://aistudio.google.com/app/apikey)).")
+
 
     enable_voice_reply = st.toggle("Voice Audio Output", value=True)
 

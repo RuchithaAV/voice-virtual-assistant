@@ -35,8 +35,8 @@ The voice assistant executes the following pipeline:
    - **Built-in Assistant Commands**: Handles greetings, time checks, memory reset, and exit.
    - **Hybrid LLM Router (`llm_service.py`)**:
      - **Local Mode (Ollama)**: 100% offline & private (`qwen3:1.7b`).
-     - **Cloud Mode (Groq)**: Near-instant inference using 70B parameter model (`llama-3.3-70b-versatile`).
-     - **Cloud Mode (Google Gemini)**: Deep reasoning and fresh knowledge (`gemini-2.0-flash`).
+     - **Cloud Mode (Groq)**: Ultra-fast inference powered by LLaMA 3.1 (`llama-3.1-8b-instant`, `llama-3.1-70b-versatile`).
+     - **Cloud Mode (Google Gemini)**: Deep reasoning and multimodal intelligence (`gemini-3.8-flash`, `gemini-flash-latest`).
 5. **Text-to-Speech Output**: Speaks the response aloud using the Windows SAPI voice engine (`win32com.client`) or browser audio streaming (`gTTS`).
 
 ---
@@ -45,8 +45,13 @@ The voice assistant executes the following pipeline:
 
 - **Hybrid AI Brain (Local + Cloud)**:
   - **Local Ollama**: 100% offline and private.
-  - **Groq Cloud**: High-speed reasoning powered by Llama 3.3 70B (<0.4s response time).
-  - **Google Gemini**: Deep explanations and factual accuracy via Gemini Flash.
+  - **Groq Cloud**: High-speed reasoning powered by LLaMA 3.1 (<0.4s response time).
+  - **Google Gemini**: Deep explanations and up-to-date knowledge via Gemini 3.8 Flash.
+- **Deterministic Real-Time Skills (`skills.py`)**:
+  - **Live Weather Lookup**: Real-time temperature, humidity, wind, and conditions via Open-Meteo API.
+  - **Encyclopedic Knowledge (Wikipedia RAG)**: Instant factual summaries for people, scientific concepts, and history.
+  - **Date and Time Reporting**: Formatted live clock and calendar reporting.
+  - **System Health Diagnostics**: Battery power status, CPU load percentage, and RAM usage via psutil.
 - **System Automation Skills (`skills.py`)**:
   - **Desktop Application Launcher**: Opens apps like Notepad, Calculator, VS Code, Chrome, Edge, File Explorer, Task Manager, Paint, and Spotify.
   - **Web & Video Search**: Performs Google and YouTube searches directly in the default browser.
